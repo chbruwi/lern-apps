@@ -142,7 +142,7 @@ function uniqueProblems(n: number, difficulty: number): Problem[] {
 // ============================================================
 // PERSISTENCE
 // ============================================================
-const SK_XP = 'mathe-held-v1-xp'; const SK_COINS = 'mathe-held-v1-coins'
+const SK_XP = 'mathe-held-v1-xp'; const SK_COINS = 'lernheld-v1-coins'
 const loadXp    = (): number => { try { return parseInt(localStorage.getItem(SK_XP)    || '0') || 0 } catch { return 0 } }
 const loadCoins = (): number => { try { return parseInt(localStorage.getItem(SK_COINS) || '0') || 0 } catch { return 0 } }
 const saveXp    = (v: number) => { try { localStorage.setItem(SK_XP,    String(v)) } catch {} }
