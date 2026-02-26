@@ -354,3 +354,18 @@ body {
   .sort-word { font-size: 1.5rem; }
   .sort-buckets { gap: 8px; }
 }
+
+/* ── HOME LINK ── */
+.home-link {
+  display: block;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  padding: 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(255,255,255,0.1);
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+.home-link:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }

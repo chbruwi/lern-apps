@@ -304,3 +304,18 @@ body {
   .letter-btn { width: 36px; height: 40px; font-size: 1.1rem; }
   .answer-slot { width: 30px; height: 36px; font-size: 1rem; }
 }
+
+/* ── HOME LINK ── */
+.home-link {
+  display: block;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.95rem;
+  text-decoration: none;
+  padding: 10px;
+  border-radius: 14px;
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+.home-link:hover { background: #f3f4f6; color: #374151; }

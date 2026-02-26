@@ -859,6 +859,7 @@ export default function App() {
             <span className="treasure-coins">🪙 {coins}</span>
           </button>
           <footer className="app-footer">Viel Spass, Andrin! 🎉</footer>
+          <a href="../" className="home-link">🏠 Alle Apps</a>
         </>
       )}
 

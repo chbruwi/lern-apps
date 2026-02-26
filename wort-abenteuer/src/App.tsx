@@ -877,6 +877,7 @@ function App() {
         <footer className="app-footer">
           Lerne die 200 wichtigsten Wörter! 📖
         </footer>
+        <a href="../" className="home-link">🏠 Alle Apps</a>
       </div>
     )
   }

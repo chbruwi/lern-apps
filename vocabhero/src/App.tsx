@@ -650,6 +650,7 @@ function App() {
       </div>
 
       <p className="footer-text">{VOCAB.length} Vokabeln · Englisch ↔ Deutsch</p>
+      <a href="../" className="home-link">🏠 Alle Apps</a>
     </div>
   )
 }
