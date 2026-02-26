@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lern-Apps</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Outfit',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#faf7f5;color:#1e1b4b}
+h1{font-size:2.4rem;font-weight:800;margin-bottom:8px;text-align:center}
+h1 span{background:linear-gradient(135deg,#ec4899,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sub{color:#6b7280;margin-bottom:32px;text-align:center}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:480px;width:100%;grid-auto-rows:1fr}
+.card{text-decoration:none;color:#1e1b4b;background:#fff;border:2px solid #e5e7eb;border-radius:16px;padding:28px 16px;text-align:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.1);border-color:#8b5cf6}
+.card-emoji{font-size:3rem;display:block;margin-bottom:8px}
+.card-title{font-size:1.1rem;font-weight:700;margin-bottom:4px}
+.card-desc{font-size:.85rem;color:#6b7280}
+@media(max-width:420px){.cards{grid-template-columns:1fr}h1{font-size:1.8rem}}
+</style>
+</head>
+<body>
+<h1>Lern<span>Apps</span> 🎓</h1>
+<p class="sub">Wähle eine App:</p>
+<div class="cards">
+  <a href="wort-abenteuer/" class="card">
+    <span class="card-emoji">🌟</span>
+    <div class="card-title">Wort-Abenteuer</div>
+    <div class="card-desc">200 wichtigste deutsche Wörter für Andrin</div>
+  </a>
+  <a href="vocabhero/" class="card">
+    <span class="card-emoji">🃏</span>
+    <div class="card-title">VocabHero</div>
+    <div class="card-desc">English Unit 3 – Accidents & First Aid für Fiona</div>
+  </a>
+  <a href="mathe-held/" class="card">
+    <span class="card-emoji">🦸</span>
+    <div class="card-title">Mathe-Held</div>
+    <div class="card-desc">Rechnen bis 100 – zehnerübergreifend für Andrin</div>
+  </a>
+</div>
+</body>
+</html>
