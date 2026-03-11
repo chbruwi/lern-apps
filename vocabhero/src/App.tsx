@@ -3,7 +3,10 @@ import './App.css'
 import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 
 // ============================================================
-// VOCABULARY DATA - Unit 3: Accidents & First Aid
+// VOCABULARY DATA
+// ============================================================
+// Neue Units hier anhängen! Einfach ein neues Objekt in UNITS eintragen,
+// dann npm run build ausführen und deployen.
 // ============================================================
 
 interface VocabItem {
@@ -12,35 +15,62 @@ interface VocabItem {
   type: 'word' | 'phrase'
 }
 
-const VOCAB: VocabItem[] = [
-  { en: 'accident', de: 'Unfall', type: 'word' },
-  { en: 'injured', de: 'verletzt', type: 'word' },
-  { en: 'injury', de: 'Verletzung', type: 'word' },
-  { en: 'hurt', de: 'wehtun, schmerzen', type: 'word' },
-  { en: 'blood', de: 'Blut', type: 'word' },
-  { en: 'dangerous', de: 'gefährlich', type: 'word' },
-  { en: 'unconscious', de: 'bewusstlos', type: 'word' },
-  { en: 'lying on the ground', de: 'auf dem Boden liegend', type: 'phrase' },
-  { en: 'ambulance', de: 'Krankenwagen', type: 'word' },
-  { en: 'emergency centre', de: 'Notrufzentrale', type: 'word' },
-  { en: 'phone number', de: 'Telefonnummer', type: 'word' },
-  { en: 'phone call', de: '(Telefon-)Anruf', type: 'word' },
-  { en: 'emergency call', de: 'Notruf', type: 'word' },
-  { en: 'mobile', de: 'Handy, Natel', type: 'word' },
-  { en: 'safety', de: 'Sicherheit', type: 'word' },
-  { en: 'adult', de: 'Erwachsene/-r', type: 'word' },
-  { en: 'help', de: 'helfen; Hilfe', type: 'word' },
-  { en: 'first aid', de: 'erste Hilfe', type: 'word' },
-  { en: 'cyclist', de: 'Velofahrer/-in', type: 'word' },
-  { en: 'breakdown triangle', de: 'Pannendreieck, Warndreieck', type: 'word' },
-  { en: 'Stay calm.', de: 'Bleib ruhig.', type: 'phrase' },
-  { en: 'Call immediately.', de: 'Ruf sofort an.', type: 'phrase' },
-  { en: 'Who are you?', de: 'Wer bist du?', type: 'phrase' },
-  { en: 'What happened?', de: 'Was ist passiert?', type: 'phrase' },
-  { en: 'When did it happen?', de: 'Wann ist es passiert?', type: 'phrase' },
-  { en: 'Where are you?', de: 'Wo bist du?', type: 'phrase' },
-  { en: 'How many people are hurt?', de: 'Wie viele Personen sind verletzt?', type: 'phrase' },
-  { en: 'safety first', de: 'Sicherheit geht vor', type: 'phrase' },
+interface Unit {
+  id: string
+  title: string       // z.B. "Unit 3"
+  subtitle: string    // z.B. "Accidents & First Aid"
+  emoji: string
+  vocab: VocabItem[]
+}
+
+const UNITS: Unit[] = [
+  {
+    id: 'unit3',
+    title: 'Unit 3',
+    subtitle: 'Accidents & First Aid',
+    emoji: '🏥',
+    vocab: [
+      { en: 'accident', de: 'Unfall', type: 'word' },
+      { en: 'injured', de: 'verletzt', type: 'word' },
+      { en: 'injury', de: 'Verletzung', type: 'word' },
+      { en: 'hurt', de: 'wehtun, schmerzen', type: 'word' },
+      { en: 'blood', de: 'Blut', type: 'word' },
+      { en: 'dangerous', de: 'gefährlich', type: 'word' },
+      { en: 'unconscious', de: 'bewusstlos', type: 'word' },
+      { en: 'lying on the ground', de: 'auf dem Boden liegend', type: 'phrase' },
+      { en: 'ambulance', de: 'Krankenwagen', type: 'word' },
+      { en: 'emergency centre', de: 'Notrufzentrale', type: 'word' },
+      { en: 'phone number', de: 'Telefonnummer', type: 'word' },
+      { en: 'phone call', de: '(Telefon-)Anruf', type: 'word' },
+      { en: 'emergency call', de: 'Notruf', type: 'word' },
+      { en: 'mobile', de: 'Handy, Natel', type: 'word' },
+      { en: 'safety', de: 'Sicherheit', type: 'word' },
+      { en: 'adult', de: 'Erwachsene/-r', type: 'word' },
+      { en: 'help', de: 'helfen; Hilfe', type: 'word' },
+      { en: 'first aid', de: 'erste Hilfe', type: 'word' },
+      { en: 'cyclist', de: 'Velofahrer/-in', type: 'word' },
+      { en: 'breakdown triangle', de: 'Pannendreieck, Warndreieck', type: 'word' },
+      { en: 'Stay calm.', de: 'Bleib ruhig.', type: 'phrase' },
+      { en: 'Call immediately.', de: 'Ruf sofort an.', type: 'phrase' },
+      { en: 'Who are you?', de: 'Wer bist du?', type: 'phrase' },
+      { en: 'What happened?', de: 'Was ist passiert?', type: 'phrase' },
+      { en: 'When did it happen?', de: 'Wann ist es passiert?', type: 'phrase' },
+      { en: 'Where are you?', de: 'Wo bist du?', type: 'phrase' },
+      { en: 'How many people are hurt?', de: 'Wie viele Personen sind verletzt?', type: 'phrase' },
+      { en: 'safety first', de: 'Sicherheit geht vor', type: 'phrase' },
+    ]
+  },
+  // Neue Unit hier anhängen ↓
+  // {
+  //   id: 'unit4',
+  //   title: 'Unit 4',
+  //   subtitle: 'Thema der neuen Einheit',
+  //   emoji: '📚',
+  //   vocab: [
+  //     { en: 'englisches Wort', de: 'deutsches Wort', type: 'word' },
+  //     { en: 'This is a phrase.', de: 'Das ist ein Satz.', type: 'phrase' },
+  //   ]
+  // },
 ]
 
 // ============================================================
@@ -86,7 +116,7 @@ function Confetti({ active }: { active: boolean }) {
 // MODULE 1: FLIP CARDS
 // ============================================================
 
-function FlipCards({ onScore, onBack }: { onScore: (n: number) => void; onBack: () => void }) {
+function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
   const [cards, setCards] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -95,13 +125,13 @@ function FlipCards({ onScore, onBack }: { onScore: (n: number) => void; onBack: 
   const [unknown, setUnknown] = useState(0)
 
   const init = useCallback(() => {
-    setCards(shuffle(VOCAB))
+    setCards(shuffle(vocab))
     setIdx(0)
     setFlipped(false)
     setShowEn(Math.random() > 0.5)
     setKnown(0)
     setUnknown(0)
-  }, [])
+  }, [vocab])
 
   useEffect(() => { init() }, [init])
 
@@ -178,7 +208,7 @@ function FlipCards({ onScore, onBack }: { onScore: (n: number) => void; onBack: 
 // MODULE 2: MATCH-IT
 // ============================================================
 
-function MatchIt({ onScore, onBack }: { onScore: (n: number) => void; onBack: () => void }) {
+function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
   const [pairs, setPairs] = useState<VocabItem[]>([])
   const [leftItems, setLeftItems] = useState<{ id: number; text: string }[]>([])
   const [rightItems, setRightItems] = useState<{ id: number; text: string }[]>([])
@@ -188,7 +218,7 @@ function MatchIt({ onScore, onBack }: { onScore: (n: number) => void; onBack: ()
   const [showConfetti, setShowConfetti] = useState(false)
 
   const init = useCallback(() => {
-    const chosen = pickRandom(VOCAB, 6)
+    const chosen = pickRandom(vocab, 6)
     setPairs(chosen)
     const showEnLeft = Math.random() > 0.5
     setLeftItems(shuffle(chosen.map((v, i) => ({ id: i, text: showEnLeft ? v.en : v.de }))))
@@ -197,7 +227,7 @@ function MatchIt({ onScore, onBack }: { onScore: (n: number) => void; onBack: ()
     setMatched([])
     setWrongPair(null)
     setShowConfetti(false)
-  }, [])
+  }, [vocab])
 
   useEffect(() => { init() }, [init])
 
@@ -275,7 +305,7 @@ function MatchIt({ onScore, onBack }: { onScore: (n: number) => void; onBack: ()
 // MODULE 3: SPEED QUIZ
 // ============================================================
 
-function SpeedQuiz({ onScore, onBack }: { onScore: (n: number) => void; onBack: () => void }) {
+function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [options, setOptions] = useState<string[]>([])
@@ -293,21 +323,21 @@ function SpeedQuiz({ onScore, onBack }: { onScore: (n: number) => void; onBack: 
     setShowEn(enDir)
     const correct = enDir ? qs[i].de : qs[i].en
     setCorrectAnswer(correct)
-    const pool = VOCAB.filter(v => (enDir ? v.de : v.en) !== correct).map(v => enDir ? v.de : v.en)
+    const pool = vocab.filter(v => (enDir ? v.de : v.en) !== correct).map(v => enDir ? v.de : v.en)
     const wrongs = pickRandom([...new Set(pool)], 3)
     setOptions(shuffle([correct, ...wrongs]))
     setTimer(15)
-  }, [])
+  }, [vocab])
 
   const init = useCallback(() => {
-    const qs = pickRandom(VOCAB, 10)
+    const qs = pickRandom(vocab, 10)
     setQuestions(qs)
     setIdx(0)
     setScore(0)
     setFeedback(null)
     setShowConfetti(false)
     setupQ(qs, 0)
-  }, [setupQ])
+  }, [setupQ, vocab])
 
   useEffect(() => { init() }, [init])
 
@@ -409,7 +439,7 @@ function SpeedQuiz({ onScore, onBack }: { onScore: (n: number) => void; onBack: 
 // MODULE 4: BUCHSTABEN-SALAT
 // ============================================================
 
-function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; onBack: () => void }) {
+function BuchstabenSalat({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [showEn, setShowEn] = useState(true)
@@ -422,7 +452,6 @@ function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; on
 
   const setupQ = useCallback((qs: VocabItem[], i: number) => {
     if (i >= qs.length) return
-    // only use single-word items for scramble
     const enDir = Math.random() > 0.5
     setShowEn(enDir)
     const answer = enDir ? qs[i].en : qs[i].de
@@ -435,14 +464,14 @@ function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; on
   }, [])
 
   const init = useCallback(() => {
-    const wordOnly = VOCAB.filter(v => v.type === 'word' && v.en.split(' ').length === 1 && v.de.split(/[,;]/).length === 1 && !v.de.includes(' '))
+    const wordOnly = vocab.filter(v => v.type === 'word' && v.en.split(' ').length === 1 && v.de.split(/[,;]/).length === 1 && !v.de.includes(' '))
     const qs = pickRandom(wordOnly, 8)
     setQuestions(qs)
     setIdx(0)
     setScore(0)
     setShowConfetti(false)
     setupQ(qs, 0)
-  }, [setupQ])
+  }, [setupQ, vocab])
 
   useEffect(() => { init() }, [init])
 
@@ -454,7 +483,6 @@ function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; on
     setUserAnswer(newAnswer)
     setAvailable(newAvail)
 
-    // check if complete
     if (newAnswer.length === scrambled.length) {
       const target = showEn ? questions[idx].en : questions[idx].de
       if (newAnswer.join('') === target) {
@@ -470,7 +498,6 @@ function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; on
       } else {
         setFeedback('wrong')
         setTimeout(() => {
-          // reset this question
           setUserAnswer([])
           setAvailable(scrambled.map(() => true))
           setFeedback(null)
@@ -484,7 +511,6 @@ function BuchstabenSalat({ onScore, onBack }: { onScore: (n: number) => void; on
     const lastLetter = userAnswer[userAnswer.length - 1]
     const newAnswer = userAnswer.slice(0, -1)
     setUserAnswer(newAnswer)
-    // find last available=false for this letter
     const newAvail = [...available]
     for (let i = newAvail.length - 1; i >= 0; i--) {
       if (!newAvail[i] && scrambled[i] === lastLetter) {
@@ -569,22 +595,20 @@ function Header({ title, onBack, right }: { title: string; onBack: () => void; r
 }
 
 // ============================================================
-// MAIN APP
-// ============================================================
-
-// ============================================================
 // LOGIN SCREEN
 // ============================================================
 
 function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [username, setUsername] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleLogin() {
+    if (!username.trim() || !code.trim()) return
     setLoading(true); setError('')
-    try { const user = await loginWithCode('fiona', code.trim()); onLogin(user) }
-    catch { setError('Wrong code – try again! 🔑') }
+    try { const user = await loginWithCode(username.trim().toLowerCase(), code.trim()); onLogin(user) }
+    catch { setError('Wrong name or code – try again! 🔑') }
     finally { setLoading(false) }
   }
 
@@ -593,18 +617,55 @@ function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
       <div className="login-card">
         <div className="login-emoji">🦸‍♀️</div>
         <h1 className="login-title">Vocab<span className="login-accent">Hero</span></h1>
-        <p className="login-subtitle">Hi Fiona! Enter your code:</p>
+        <p className="login-subtitle">Enter your name and code:</p>
+        <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Your name..." className="login-input" autoComplete="off" autoCapitalize="none" />
         <input type="text" value={code} onChange={e => setCode(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleLogin()}
           placeholder="Your code..." className="login-input" autoComplete="off" autoCapitalize="none" />
         {error && <p className="login-error">{error}</p>}
-        <button className="login-btn" onClick={handleLogin} disabled={!code.trim() || loading}>
+        <button className="login-btn" onClick={handleLogin} disabled={!username.trim() || !code.trim() || loading}>
           {loading ? '⏳ Loading...' : 'Let\'s go! 🚀'}
         </button>
       </div>
     </div>
   )
 }
+
+// ============================================================
+// UNIT PICKER
+// ============================================================
+
+function UnitPicker({ onSelect }: { onSelect: (unit: Unit) => void }) {
+  return (
+    <div className="app">
+      <header className="hero">
+        <h1 className="hero-title">Vocab<span className="hero-accent">Hero</span></h1>
+        <p className="hero-sub">Choose your unit</p>
+      </header>
+      <div className="unit-grid">
+        {UNITS.map((unit, i) => (
+          <button
+            key={unit.id}
+            className="unit-card"
+            style={{ animationDelay: `${i * 0.08}s` }}
+            onClick={() => onSelect(unit)}
+          >
+            <span className="unit-emoji">{unit.emoji}</span>
+            <span className="unit-title">{unit.title}</span>
+            <span className="unit-subtitle">{unit.subtitle}</span>
+            <span className="unit-count">{unit.vocab.length} words</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
 
 type View = 'menu' | 'flip' | 'match' | 'speed' | 'scramble'
 
@@ -617,6 +678,7 @@ const GAMES = [
 
 function App() {
   const [view, setView] = useState<View>('menu')
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [totalScore, setTotalScore] = useState(0)
   const [level, setLevel] = useState(1)
   const [levelUp, setLevelUp] = useState(false)
@@ -632,6 +694,8 @@ function App() {
       setTotalScore(serverXp)
       setLevel(Math.floor(serverXp / 120) + 1)
     }
+    // Auto-select if only one unit
+    if (UNITS.length === 1) setSelectedUnit(UNITS[0])
   }, [])
 
   // Debounced sync to server on score change
@@ -655,9 +719,11 @@ function App() {
     setPbUser(null)
     setTotalScore(0)
     setLevel(1)
+    setSelectedUnit(UNITS.length === 1 ? UNITS[0] : null)
   }
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
+  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setView('menu') }} />
 
   const addScore = (pts: number) => {
     setTotalScore(prev => {
@@ -682,10 +748,10 @@ function App() {
           <span className="top-score">⭐ {totalScore}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip' && <FlipCards onScore={addScore} onBack={goMenu} />}
-        {view === 'match' && <MatchIt onScore={addScore} onBack={goMenu} />}
-        {view === 'speed' && <SpeedQuiz onScore={addScore} onBack={goMenu} />}
-        {view === 'scramble' && <BuchstabenSalat onScore={addScore} onBack={goMenu} />}
+        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
+        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
+        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
+        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
       </div>
     )
   }
@@ -696,7 +762,7 @@ function App() {
 
       <header className="hero">
         <h1 className="hero-title">Vocab<span className="hero-accent">Hero</span></h1>
-        <p className="hero-sub">Unit 3 · Accidents & First Aid</p>
+        <p className="hero-sub">{selectedUnit.emoji} {selectedUnit.title} · {selectedUnit.subtitle}</p>
         <div className="hero-stats">
           <div className="stat-pill">⭐ {totalScore} Punkte</div>
           <div className="stat-pill pill-level">Level {level}</div>
@@ -722,8 +788,11 @@ function App() {
         ))}
       </div>
 
-      <p className="footer-text">{VOCAB.length} Vokabeln · Englisch ↔ Deutsch</p>
+      <p className="footer-text">{selectedUnit.vocab.length} Vokabeln · Englisch ↔ Deutsch</p>
       <div className="footer-links">
+        {UNITS.length > 1 && (
+          <button className="unit-switch-btn" onClick={() => setSelectedUnit(null)}>📚 Unit wechseln</button>
+        )}
         <a href="../" className="home-link">🏠 Alle Apps</a>
         <button className="logout-btn" onClick={handleLogout}>🚪 Sign out</button>
       </div>

@@ -8,17 +8,74 @@ import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 type Screen = 'menu' | 'blitz' | 'luecke' | 'wahrfalsch' | 'sprint' | 'complete' | 'schatzkiste' | 'duell'
 
 interface Problem {
-  a: number; b: number; op: '+' | '-'; result: number
+  a: number; b: number; op: '+' | '-' | '×' | '÷'; result: number
 }
 interface GameResult {
   game: Screen; score: number; total: number; coinsEarned: number
 }
+
+// ============================================================
+// MATH UNITS – von Eltern definierbar
+// ============================================================
+// Neue Einheiten hier anhängen! Dann npm run build und deployen.
+// ============================================================
+type Operation = 'add' | 'sub' | 'mul' | 'div'
+interface MathUnit {
+  id: string
+  title: string       // z.B. "Plus & Minus"
+  subtitle: string    // z.B. "Zehnerübergreifend bis 100"
+  emoji: string
+  operations: Operation[]
+  maxNumber: number   // für add/sub: max Ergebnis; für mul/div: max Tabellenzahl
+  tableOf?: number[]  // Einmaleins-Reihen, z.B. [2, 5, 10]
+}
+
+const MATH_UNITS: MathUnit[] = [
+  {
+    id: 'plus-minus-100',
+    title: 'Plus & Minus',
+    subtitle: 'Zehnerübergreifend bis 100',
+    emoji: '➕',
+    operations: ['add', 'sub'],
+    maxNumber: 100,
+  },
+  // Neue Einheiten einfach hier anhängen ↓
+  // {
+  //   id: 'einmaleins',
+  //   title: 'Mal-Einmaleins',
+  //   subtitle: '2er bis 10er Reihe',
+  //   emoji: '✖️',
+  //   operations: ['mul'],
+  //   maxNumber: 10,
+  //   tableOf: [2, 3, 4, 5, 6, 7, 8, 9, 10],
+  // },
+  // {
+  //   id: 'division',
+  //   title: 'Teilen',
+  //   subtitle: 'Einfache Division',
+  //   emoji: '➗',
+  //   operations: ['div'],
+  //   maxNumber: 10,
+  //   tableOf: [2, 5, 10],
+  // },
+  // {
+  //   id: 'gemischt',
+  //   title: 'Mal & Teilen',
+  //   subtitle: 'Einmaleins gemischt',
+  //   emoji: '🔀',
+  //   operations: ['mul', 'div'],
+  //   maxNumber: 10,
+  //   tableOf: [2, 3, 4, 5, 10],
+  // },
+]
+
 interface GameProps {
   onFinish: (game: Screen, score: number, total: number, coins: number) => void
   onBack: () => void
   onXp: (amount: number) => void
   onCoins: (amount: number) => void
   difficulty: number
+  unit: MathUnit
 }
 
 // ============================================================
@@ -129,12 +186,49 @@ function makeProblem(difficulty: number): Problem {
   }
 }
 
-function uniqueProblems(n: number, difficulty: number): Problem[] {
+function makeMulProblem(unit: MathUnit, difficulty: number): Problem {
+  const allTables = unit.tableOf ?? Array.from({ length: unit.maxNumber }, (_, i) => i + 2)
+  const tables =
+    difficulty === 1 ? allTables.filter(t => [2, 5, 10].includes(t)).length > 0
+      ? allTables.filter(t => [2, 5, 10].includes(t)) : allTables.slice(0, 3)
+    : difficulty === 2 ? allTables.filter(t => t <= 5 || t === 10).length > 0
+      ? allTables.filter(t => t <= 5 || t === 10) : allTables.slice(0, Math.ceil(allTables.length / 2))
+    : allTables
+  const b = tables[Math.floor(Math.random() * tables.length)]
+  const aMax = difficulty <= 1 ? 5 : difficulty <= 2 ? 7 : 10
+  const a = rand(1, aMax)
+  return { a, b, op: '×', result: a * b }
+}
+
+function makeDivProblem(unit: MathUnit, difficulty: number): Problem {
+  const allTables = unit.tableOf ?? Array.from({ length: unit.maxNumber }, (_, i) => i + 2)
+  const tables =
+    difficulty === 1 ? allTables.filter(t => [2, 5, 10].includes(t)).length > 0
+      ? allTables.filter(t => [2, 5, 10].includes(t)) : allTables.slice(0, 3)
+    : difficulty === 2 ? allTables.filter(t => t <= 5 || t === 10).length > 0
+      ? allTables.filter(t => t <= 5 || t === 10) : allTables.slice(0, Math.ceil(allTables.length / 2))
+    : allTables
+  const divisor = tables[Math.floor(Math.random() * tables.length)]
+  const quotientMax = difficulty <= 1 ? 5 : difficulty <= 2 ? 7 : 10
+  const quotient = rand(1, quotientMax)
+  return { a: divisor * quotient, b: divisor, op: '÷', result: quotient }
+}
+
+function generateProblem(unit: MathUnit, difficulty: number): Problem {
+  const hasMul = unit.operations.includes('mul')
+  const hasDiv = unit.operations.includes('div')
+  if (hasMul && hasDiv) return Math.random() > 0.5 ? makeMulProblem(unit, difficulty) : makeDivProblem(unit, difficulty)
+  if (hasMul) return makeMulProblem(unit, difficulty)
+  if (hasDiv) return makeDivProblem(unit, difficulty)
+  return makeProblem(difficulty) // add/sub: bestehendes System
+}
+
+function uniqueProblems(n: number, difficulty: number, unit: MathUnit): Problem[] {
   const seen = new Set<string>(); const result: Problem[] = []
   let tries = 0
   while (result.length < n && tries < n * 30) {
     tries++
-    const p = makeProblem(difficulty); const key = `${p.a}${p.op}${p.b}`
+    const p = generateProblem(unit, difficulty); const key = `${p.a}${p.op}${p.b}`
     if (!seen.has(key)) { seen.add(key); result.push(p) }
   }
   return result
@@ -255,8 +349,8 @@ function useGameCoins(onCoins: (n: number) => void) {
 // ============================================================
 const BLITZ_TOTAL = 10
 
-function BlitzRechnen({ onFinish, onBack, onXp, onCoins, difficulty }: GameProps) {
-  const [problems]  = useState(() => uniqueProblems(BLITZ_TOTAL, difficulty))
+function BlitzRechnen({ onFinish, onBack, onXp, onCoins, difficulty, unit }: GameProps) {
+  const [problems]  = useState(() => uniqueProblems(BLITZ_TOTAL, difficulty, unit))
   const [idx, setIdx]       = useState(0)
   const [input, setInput]   = useState('')
   const [feedback, setFeedback] = useState<'correct'|'wrong'|null>(null)
@@ -323,8 +417,8 @@ const makeLueckeProblem = (p: Problem): LueckeProblem => {
   return { problem: p, missing, answer: missing === 'left' ? p.a : p.b }
 }
 
-function LueckenDetektiv({ onFinish, onBack, onXp, onCoins, difficulty }: GameProps) {
-  const [luecken] = useState(() => uniqueProblems(LUECKE_TOTAL, difficulty).map(makeLueckeProblem))
+function LueckenDetektiv({ onFinish, onBack, onXp, onCoins, difficulty, unit }: GameProps) {
+  const [luecken] = useState(() => uniqueProblems(LUECKE_TOTAL, difficulty, unit).map(makeLueckeProblem))
   const [idx, setIdx]       = useState(0)
   const [input, setInput]   = useState('')
   const [feedback, setFeedback] = useState<'correct'|'wrong'|null>(null)
@@ -393,14 +487,14 @@ const makeWFProblem = (p: Problem): WFProblem => {
   const isCorrect = Math.random() > 0.5
   let shown = p.result
   if (!isCorrect) {
-    const off = [-5,-4,-3,-2,-1,1,2,3,4,5].filter(o => p.result+o > 0 && p.result+o <= 100)
+    const off = [-5,-4,-3,-2,-1,1,2,3,4,5].filter(o => p.result+o > 0)
     shown = p.result + off[Math.floor(Math.random() * off.length)]
   }
   return { problem: p, shown, isCorrect }
 }
 
-function RichtigFalsch({ onFinish, onBack, onXp, onCoins, difficulty }: GameProps) {
-  const [wfList] = useState(() => shuffle(uniqueProblems(WF_TOTAL, difficulty).map(makeWFProblem)))
+function RichtigFalsch({ onFinish, onBack, onXp, onCoins, difficulty, unit }: GameProps) {
+  const [wfList] = useState(() => shuffle(uniqueProblems(WF_TOTAL, difficulty, unit).map(makeWFProblem)))
   const [idx, setIdx]       = useState(0)
   const [feedback, setFeedback] = useState<'correct'|'wrong'|null>(null)
   const [lastAnswer, setLastAnswer] = useState<boolean|null>(null)
@@ -465,17 +559,17 @@ function RichtigFalsch({ onFinish, onBack, onXp, onCoins, difficulty }: GameProp
 const SPRINT_TOTAL = 10
 interface SprintProblem { target: number; correct: Problem; options: Problem[] }
 
-const makeSprintProblem = (p: Problem, difficulty: number): SprintProblem => {
+const makeSprintProblem = (p: Problem, difficulty: number, unit: MathUnit): SprintProblem => {
   const distractors: Problem[] = []; let tries = 0
   while (distractors.length < 3 && tries < 60) {
-    tries++; const d = makeProblem(difficulty)
+    tries++; const d = generateProblem(unit, difficulty)
     if (d.result !== p.result && !distractors.find(x => x.result === d.result)) distractors.push(d)
   }
   return { target: p.result, correct: p, options: shuffle([p, ...distractors]) }
 }
 
-function ZahlenSprint({ onFinish, onBack, onXp, onCoins, difficulty }: GameProps) {
-  const [sprints] = useState(() => uniqueProblems(SPRINT_TOTAL, difficulty).map(p => makeSprintProblem(p, difficulty)))
+function ZahlenSprint({ onFinish, onBack, onXp, onCoins, difficulty, unit }: GameProps) {
+  const [sprints] = useState(() => uniqueProblems(SPRINT_TOTAL, difficulty, unit).map(p => makeSprintProblem(p, difficulty, unit)))
   const [idx, setIdx]       = useState(0)
   const [selected, setSelected] = useState<number|null>(null)
   const [feedback, setFeedback] = useState<'correct'|'wrong'|null>(null)
@@ -541,8 +635,8 @@ const ROUND_TIME   = 7   // Sekunden pro Aufgabe
 
 interface DuellProblem { problem: Problem; options: number[]; correct: number }
 
-function makeDuellProblem(difficulty: number): DuellProblem {
-  const p = makeProblem(difficulty)
+function makeDuellProblem(difficulty: number, unit: MathUnit): DuellProblem {
+  const p = generateProblem(unit, difficulty)
   const correct = p.result
   const opts = new Set<number>([correct])
   let tries = 0
@@ -550,7 +644,7 @@ function makeDuellProblem(difficulty: number): DuellProblem {
     tries++
     const delta = rand(1, 9) * (Math.random() > 0.5 ? 1 : -1)
     const d = correct + delta
-    if (d >= 1 && d <= 100) opts.add(d)
+    if (d >= 1) opts.add(d)
   }
   // fallback: fill with nearby numbers
   let fill = correct + 1
@@ -560,8 +654,8 @@ function makeDuellProblem(difficulty: number): DuellProblem {
 
 type DuellFeedback = { type: 'correct' | 'wrong' | 'timeout'; coins: number }
 
-function BlitzDuell({ onBack, onCoins, difficulty }: { onBack: () => void; onCoins: (n: number) => void; difficulty: number }) {
-  const duellRef = useRef(Array.from({ length: DUELL_ROUNDS }, () => makeDuellProblem(difficulty)))
+function BlitzDuell({ onBack, onCoins, difficulty, unit }: { onBack: () => void; onCoins: (n: number) => void; difficulty: number; unit: MathUnit }) {
+  const duellRef = useRef(Array.from({ length: DUELL_ROUNDS }, () => makeDuellProblem(difficulty, unit)))
   const [round, setRound]       = useState(0)
   const [timeLeft, setTimeLeft] = useState(ROUND_TIME)
   const [selected, setSelected] = useState<number | null>(null)
@@ -771,21 +865,50 @@ function Schatzkiste({ xp, coins, onBack, onPlayDuell }: {
 }
 
 // ============================================================
+// UNIT PICKER
+// ============================================================
+function UnitPicker({ onSelect }: { onSelect: (unit: MathUnit) => void }) {
+  return (
+    <div className="app-container">
+      <header className="app-header">
+        <h1 className="app-title"><span className="title-emoji">🦸</span> Mathe-Held</h1>
+        <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: 4 }}>Wähle dein Thema:</p>
+      </header>
+      <div className="unit-grid">
+        {MATH_UNITS.map((unit, i) => (
+          <button
+            key={unit.id}
+            className="unit-card"
+            style={{ animationDelay: `${i * 0.08}s` }}
+            onClick={() => onSelect(unit)}
+          >
+            <span className="unit-emoji">{unit.emoji}</span>
+            <span className="unit-title">{unit.title}</span>
+            <span className="unit-subtitle">{unit.subtitle}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // LOGIN SCREEN
 // ============================================================
 function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [username, setUsername] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleLogin() {
-    if (!code.trim()) return
+    if (!username.trim() || !code.trim()) return
     setLoading(true); setError('')
     try {
-      const user = await loginWithCode('andrin', code.trim())
+      const user = await loginWithCode(username.trim().toLowerCase(), code.trim())
       onLogin(user)
     } catch {
-      setError('Falscher Code – versuch nochmal! 🔑')
+      setError('Falscher Name oder Code – versuch nochmal! 🔑')
     } finally {
       setLoading(false)
     }
@@ -796,7 +919,17 @@ function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
       <div className="login-card">
         <div className="login-emoji">🦸</div>
         <h1 className="login-title">Mathe-Held</h1>
-        <p className="login-subtitle">Hallo Andrin! Gib deinen Code ein:</p>
+        <p className="login-subtitle">Gib deinen Namen und Code ein:</p>
+        <input
+          type="text"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Dein Name..."
+          className="login-input"
+          autoComplete="off"
+          autoCapitalize="none"
+        />
         <input
           type="text"
           value={code}
@@ -811,7 +944,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
         <button
           className="login-btn"
           onClick={handleLogin}
-          disabled={!code.trim() || loading}
+          disabled={!username.trim() || !code.trim() || loading}
         >
           {loading ? '⏳ Laden...' : 'Los geht\'s! 🚀'}
         </button>
@@ -831,6 +964,9 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [result, setResult]       = useState<GameResult | null>(null)
   const [pbUser, setPbUser]       = useState<PbUser | null>(null)
+  const [selectedUnit, setSelectedUnit] = useState<MathUnit | null>(
+    MATH_UNITS.length === 1 ? MATH_UNITS[0] : null
+  )
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const level = getLevel(xp); const xpInLevel = getXpInLevel(xp); const difficulty = getDifficulty(level)
@@ -878,6 +1014,8 @@ export default function App() {
 
   // Login-Screen anzeigen wenn nicht eingeloggt
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
+  // Themen-Auswahl wenn mehr als 1 Einheit und noch keine gewählt
+  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setScreen('menu') }} />
 
   const handleFinish = useCallback((game: Screen, score: number, total: number, coinsEarned: number) => {
     setResult({ game, score, total, coinsEarned })
@@ -894,7 +1032,7 @@ export default function App() {
     { id: 'sprint'     as Screen, emoji: '🎯', title: 'Zahlen-Sprint',    desc: 'Wähle die richtige Rechnung!',   color: '#FF8A5C' },
   ]
 
-  const gameProps: GameProps = { onFinish: handleFinish, onBack: () => setScreen('menu'), onXp: addXp, onCoins: addCoins, difficulty }
+  const gameProps: GameProps = { onFinish: handleFinish, onBack: () => setScreen('menu'), onXp: addXp, onCoins: addCoins, difficulty, unit: selectedUnit }
   const diffColor = DIFFICULTY_COLORS[difficulty]
 
   return (
@@ -925,7 +1063,7 @@ export default function App() {
             </div>
           </header>
 
-          <p className="menu-subtitle">Rechnen bis 100 – zehnerübergreifend 🔢</p>
+          <p className="menu-subtitle">{selectedUnit.emoji} {selectedUnit.title} – {selectedUnit.subtitle}</p>
 
           <div className="game-grid">
             {GAMES.map(g => (
@@ -943,8 +1081,11 @@ export default function App() {
             💰 Schatzkiste
             <span className="treasure-coins">🪙 {coins}</span>
           </button>
-          <footer className="app-footer">Viel Spass, Andrin! 🎉</footer>
+          <footer className="app-footer">Viel Spass! 🎉</footer>
           <div className="footer-links">
+            {MATH_UNITS.length > 1 && (
+              <button className="unit-switch-btn" onClick={() => setSelectedUnit(null)}>📚 Thema wechseln</button>
+            )}
             <a href="../" className="home-link">🏠 Alle Apps</a>
             <button className="logout-btn" onClick={handleLogout}>Abmelden</button>
           </div>
@@ -956,7 +1097,7 @@ export default function App() {
       {screen === 'wahrfalsch' && <RichtigFalsch   {...gameProps} />}
       {screen === 'sprint'     && <ZahlenSprint    {...gameProps} />}
       {screen === 'schatzkiste' && <Schatzkiste xp={xp} coins={coins} onBack={() => setScreen('menu')} onPlayDuell={handlePlayDuell} />}
-      {screen === 'duell'      && <BlitzDuell onBack={() => setScreen('schatzkiste')} onCoins={addCoins} difficulty={difficulty} />}
+      {screen === 'duell'      && <BlitzDuell onBack={() => setScreen('schatzkiste')} onCoins={addCoins} difficulty={difficulty} unit={selectedUnit} />}
 
       {screen === 'complete' && result && (
         <div className="game-complete-screen">

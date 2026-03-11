@@ -798,14 +798,16 @@ function WoerterKategorien({ onScore, onBack }: { onScore: (pts: number) => void
 // ============================================================
 
 function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [username, setUsername] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleLogin() {
+    if (!username.trim() || !code.trim()) return
     setLoading(true); setError('')
-    try { const user = await loginWithCode('andrin', code.trim()); onLogin(user) }
-    catch { setError('Falscher Code – versuch nochmal! 🔑') }
+    try { const user = await loginWithCode(username.trim().toLowerCase(), code.trim()); onLogin(user) }
+    catch { setError('Falscher Name oder Code – versuch nochmal! 🔑') }
     finally { setLoading(false) }
   }
 
@@ -814,12 +816,15 @@ function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
       <div className="login-card">
         <div className="login-emoji">🌟</div>
         <h1 className="login-title">Wort-Abenteuer</h1>
-        <p className="login-subtitle">Hallo Andrin! Gib deinen Code ein:</p>
+        <p className="login-subtitle">Gib deinen Namen und Code ein:</p>
+        <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Dein Name..." className="login-input" autoComplete="off" autoCapitalize="none" />
         <input type="text" value={code} onChange={e => setCode(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleLogin()}
           placeholder="Dein Code..." className="login-input" autoComplete="off" autoCapitalize="none" />
         {error && <p className="login-error">{error}</p>}
-        <button className="login-btn" onClick={handleLogin} disabled={!code.trim() || loading}>
+        <button className="login-btn" onClick={handleLogin} disabled={!username.trim() || !code.trim() || loading}>
           {loading ? '⏳ Laden...' : 'Los geht\'s! 🚀'}
         </button>
       </div>
