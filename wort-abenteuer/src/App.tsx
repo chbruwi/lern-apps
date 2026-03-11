@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
+import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 
 // ============================================================
 // DATA
@@ -793,6 +794,40 @@ function WoerterKategorien({ onScore, onBack }: { onScore: (pts: number) => void
 }
 
 // ============================================================
+// LOGIN SCREEN
+// ============================================================
+
+function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin() {
+    setLoading(true); setError('')
+    try { const user = await loginWithCode('andrin', code.trim()); onLogin(user) }
+    catch { setError('Falscher Code – versuch nochmal! 🔑') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="login-emoji">🌟</div>
+        <h1 className="login-title">Wort-Abenteuer</h1>
+        <p className="login-subtitle">Hallo Andrin! Gib deinen Code ein:</p>
+        <input type="text" value={code} onChange={e => setCode(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Dein Code..." className="login-input" autoComplete="off" autoCapitalize="none" />
+        {error && <p className="login-error">{error}</p>}
+        <button className="login-btn" onClick={handleLogin} disabled={!code.trim() || loading}>
+          {loading ? '⏳ Laden...' : 'Los geht\'s! 🚀'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 
@@ -803,6 +838,44 @@ function App() {
   const [totalScore, setTotalScore] = useState(0)
   const [level, setLevel] = useState(1)
   const [showLevelUp, setShowLevelUp] = useState(false)
+  const [pbUser, setPbUser] = useState<PbUser | null>(null)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load saved auth on mount and seed score from server
+  useEffect(() => {
+    const saved = getSavedAuth()
+    if (saved) {
+      setPbUser(saved)
+      const serverXp = saved.xp ?? 0
+      setTotalScore(serverXp)
+      setLevel(Math.floor(serverXp / 100) + 1)
+    }
+  }, [])
+
+  // Debounced sync to server on score change
+  useEffect(() => {
+    if (!pbUser) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(() => {
+      syncToServer(pbUser, pbUser.coins, totalScore, Math.floor(totalScore / 100) + 1)
+    }, 3000)
+  }, [totalScore, pbUser])
+
+  const handleLogin = (user: PbUser) => {
+    setPbUser(user)
+    const serverXp = user.xp ?? 0
+    setTotalScore(serverXp)
+    setLevel(Math.floor(serverXp / 100) + 1)
+  }
+
+  const handleLogout = () => {
+    logout()
+    setPbUser(null)
+    setTotalScore(0)
+    setLevel(1)
+  }
+
+  if (!pbUser) return <LoginScreen onLogin={handleLogin} />
 
   const addScore = (pts: number) => {
     setTotalScore(prev => {
@@ -877,7 +950,10 @@ function App() {
         <footer className="app-footer">
           Lerne die 200 wichtigsten Wörter! 📖
         </footer>
-        <a href="../" className="home-link">🏠 Alle Apps</a>
+        <div className="footer-links">
+          <a href="../" className="home-link">🏠 Alle Apps</a>
+          <button className="logout-btn" onClick={handleLogout}>🚪 Abmelden</button>
+        </div>
       </div>
     )
   }

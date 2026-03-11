@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import './App.css'
+import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 
 // ============================================================
 // TYPES
@@ -517,7 +518,7 @@ function ZahlenSprint({ onFinish, onBack, onXp, onCoins, difficulty }: GameProps
         {sp.options.map((opt, i) => {
           let cls = 'sprint-btn'
           if (feedback) { if (opt.result === sp.target) cls += ' correct-btn'; else if (selected === i) cls += ' wrong-btn' }
-          return <button key={i} className={cls} onClick={() => pick(i)} disabled={!!feedback}>{opt.a} {opt.op} {opt.b}</button>
+          return <button key={i} className={cls} onClick={(e) => { (e.currentTarget as HTMLElement).blur(); pick(i) }} disabled={!!feedback}>{opt.a} {opt.op} {opt.b}</button>
         })}
       </div>
 
@@ -675,7 +676,7 @@ function BlitzDuell({ onBack, onCoins, difficulty }: { onBack: () => void; onCoi
             else if (selected === i) cls += ' wrong-btn'
           }
           return (
-            <button key={i} className={cls} onClick={() => pick(i)} disabled={!!feedback}>
+            <button key={i} className={cls} onClick={(e) => { (e.currentTarget as HTMLElement).blur(); pick(i) }} disabled={!!feedback}>
               {opt}
             </button>
           )
@@ -770,6 +771,56 @@ function Schatzkiste({ xp, coins, onBack, onPlayDuell }: {
 }
 
 // ============================================================
+// LOGIN SCREEN
+// ============================================================
+function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin() {
+    if (!code.trim()) return
+    setLoading(true); setError('')
+    try {
+      const user = await loginWithCode('andrin', code.trim())
+      onLogin(user)
+    } catch {
+      setError('Falscher Code – versuch nochmal! 🔑')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="login-emoji">🦸</div>
+        <h1 className="login-title">Mathe-Held</h1>
+        <p className="login-subtitle">Hallo Andrin! Gib deinen Code ein:</p>
+        <input
+          type="text"
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Dein Code..."
+          className="login-input"
+          autoComplete="off"
+          autoCapitalize="none"
+        />
+        {error && <p className="login-error">{error}</p>}
+        <button
+          className="login-btn"
+          onClick={handleLogin}
+          disabled={!code.trim() || loading}
+        >
+          {loading ? '⏳ Laden...' : 'Los geht\'s! 🚀'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 export default function App() {
@@ -779,8 +830,39 @@ export default function App() {
   const [showLevelUp, setShowLevelUp]   = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
   const [result, setResult]       = useState<GameResult | null>(null)
+  const [pbUser, setPbUser]       = useState<PbUser | null>(null)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const level = getLevel(xp); const xpInLevel = getXpInLevel(xp); const difficulty = getDifficulty(level)
+
+  // Beim Start: gespeicherte Auth laden
+  useEffect(() => {
+    const saved = getSavedAuth()
+    if (saved) {
+      setPbUser(saved)
+      saveXp(saved.xp); setXp(saved.xp)
+      saveCoins(saved.coins); setCoins(saved.coins)
+    }
+  }, [])
+
+  // Debounced Sync: 3 Sekunden nach letzter Coins/XP-Änderung
+  useEffect(() => {
+    if (!pbUser) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(() => {
+      syncToServer(pbUser, coins, xp, getLevel(xp))
+    }, 3000)
+  }, [xp, coins, pbUser])
+
+  const handleLogin = useCallback((user: PbUser) => {
+    setPbUser(user)
+    saveXp(user.xp); setXp(user.xp)
+    saveCoins(user.coins); setCoins(user.coins)
+  }, [])
+
+  const handleLogout = useCallback(() => {
+    logout(); setPbUser(null)
+  }, [])
 
   const addXp = useCallback((amount: number) => {
     setXp(prev => {
@@ -793,6 +875,9 @@ export default function App() {
   const addCoins = useCallback((amount: number) => {
     setCoins(prev => { const next = Math.max(0, prev + amount); saveCoins(next); return next })
   }, [])
+
+  // Login-Screen anzeigen wenn nicht eingeloggt
+  if (!pbUser) return <LoginScreen onLogin={handleLogin} />
 
   const handleFinish = useCallback((game: Screen, score: number, total: number, coinsEarned: number) => {
     setResult({ game, score, total, coinsEarned })
@@ -859,7 +944,10 @@ export default function App() {
             <span className="treasure-coins">🪙 {coins}</span>
           </button>
           <footer className="app-footer">Viel Spass, Andrin! 🎉</footer>
-          <a href="../" className="home-link">🏠 Alle Apps</a>
+          <div className="footer-links">
+            <a href="../" className="home-link">🏠 Alle Apps</a>
+            <button className="logout-btn" onClick={handleLogout}>Abmelden</button>
+          </div>
         </>
       )}
 

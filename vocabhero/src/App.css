@@ -319,3 +319,89 @@ body {
   margin-top: 4px;
 }
 .home-link:hover { background: #f3f4f6; color: #374151; }
+
+/* ── FOOTER LINKS ── */
+.footer-links {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.footer-links .home-link {
+  flex: 1;
+  margin-top: 0;
+}
+.logout-btn {
+  flex: 1;
+  background: transparent;
+  border: 2px solid #e5e7eb;
+  color: #6b7280;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-size: 0.95rem;
+  padding: 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.logout-btn:hover { background: #fff1f2; border-color: var(--red); color: var(--red); }
+
+/* ── LOGIN SCREEN ── */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bg);
+}
+.login-card {
+  background: var(--bg2);
+  border: 2px solid var(--border);
+  border-radius: 24px;
+  padding: 40px 32px;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+}
+.login-emoji { font-size: 4rem; margin-bottom: 12px; }
+.login-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.login-accent { color: var(--pink); }
+.login-subtitle { color: var(--text2); font-size: 1.05rem; margin-bottom: 24px; }
+.login-input {
+  width: 100%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-size: 1.3rem;
+  padding: 14px 18px;
+  text-align: center;
+  letter-spacing: 0.1em;
+  outline: none;
+  transition: border-color 0.2s;
+  margin-bottom: 16px;
+}
+.login-input:focus { border-color: var(--pink); }
+.login-error { color: var(--red); font-size: 0.95rem; margin-bottom: 12px; }
+.login-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  border: none;
+  border-radius: 14px;
+  color: #fff;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(236, 72, 153, 0.3);
+}
+.login-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4); }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }

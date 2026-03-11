@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 
 // ============================================================
 // SHARED
@@ -58,7 +59,7 @@ const GAMES = [
   { id: 'schlange' as Screen, emoji: '🐍', title: 'Schlange',     desc: 'Iss soviel wie möglich!',           cost: 15, color: '#2ECC71' },
 ]
 
-function Menu({ coins, onPlay }: { coins: number; onPlay: (id: Screen) => void }) {
+function Menu({ coins, onPlay, onLogout }: { coins: number; onPlay: (id: Screen) => void; onLogout: () => void }) {
   return (
     <>
       <header className="app-header">
@@ -84,7 +85,10 @@ function Menu({ coins, onPlay }: { coins: number; onPlay: (id: Screen) => void }
           )
         })}
       </div>
-      <a href="../" className="home-link">🏠 Zurück zu den Lern-Apps</a>
+      <div className="footer-links">
+        <a href="../" className="home-link">🏠 Alle Apps</a>
+        <button className="logout-btn" onClick={onLogout}>🚪 Abmelden</button>
+      </div>
     </>
   )
 }
@@ -632,9 +636,84 @@ function Schlange({ onBack, onCoins }: { onBack: () => void; onCoins: (n: number
 // ============================================================
 // MAIN APP
 // ============================================================
+// ============================================================
+// LOGIN SCREEN
+// ============================================================
+
+function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
+  const [username, setUsername] = useState('')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin() {
+    setLoading(true); setError('')
+    try { const user = await loginWithCode(username.trim().toLowerCase(), code.trim()); onLogin(user) }
+    catch { setError('Falscher Code – versuch nochmal! 🔑') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="login-emoji">🎮</div>
+        <h1 className="login-title">Spielecke</h1>
+        <p className="login-subtitle">Wer spielt? Gib deinen Code ein:</p>
+        <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+          placeholder="Dein Name (z.B. andrin)..." className="login-input"
+          autoComplete="off" autoCapitalize="none" />
+        <input type="text" value={code} onChange={e => setCode(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="Dein Code..." className="login-input"
+          autoComplete="off" autoCapitalize="none" />
+        {error && <p className="login-error">{error}</p>}
+        <button className="login-btn" onClick={handleLogin} disabled={!code.trim() || !username.trim() || loading}>
+          {loading ? '⏳ Laden...' : 'Los geht\'s! 🚀'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [coins, setCoins]   = useState(loadCoins)
   const [screen, setScreen] = useState<Screen>('menu')
+  const [pbUser, setPbUser] = useState<PbUser | null>(null)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load saved auth on mount and seed coins from server
+  useEffect(() => {
+    const saved = getSavedAuth()
+    if (saved) {
+      setPbUser(saved)
+      const serverCoins = saved.coins ?? 0
+      setCoins(serverCoins)
+      saveCoins(serverCoins)
+    }
+  }, [])
+
+  // Debounced sync to server on coin change
+  useEffect(() => {
+    if (!pbUser) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(() => {
+      syncToServer(pbUser, coins, pbUser.xp, pbUser.level)
+    }, 3000)
+  }, [coins, pbUser])
+
+  const handleLogin = (user: PbUser) => {
+    setPbUser(user)
+    const serverCoins = user.coins ?? 0
+    setCoins(serverCoins)
+    saveCoins(serverCoins)
+  }
+
+  const handleLogout = () => {
+    logout()
+    setPbUser(null)
+  }
+
+  if (!pbUser) return <LoginScreen onLogin={handleLogin} />
 
   function addCoins(delta: number) {
     setCoins(prev => { const n = Math.max(0, prev + delta); saveCoins(n); return n })
@@ -651,7 +730,7 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {screen === 'menu'     && <Menu coins={coins} onPlay={startGame} />}
+      {screen === 'menu'     && <Menu coins={coins} onPlay={startGame} onLogout={handleLogout} />}
       {screen === 'rad'      && <Gluecksrad coins={coins} onCoins={addCoins} onBack={back} />}
       {screen === 'ballon'   && <BallonTipp   {...sp} />}
       {screen === 'memo'     && <MemoChaos    {...sp} />}
