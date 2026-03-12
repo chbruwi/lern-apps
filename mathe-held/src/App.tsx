@@ -1012,11 +1012,6 @@ export default function App() {
     setCoins(prev => { const next = Math.max(0, prev + amount); saveCoins(next); return next })
   }, [])
 
-  // Login-Screen anzeigen wenn nicht eingeloggt
-  if (!pbUser) return <LoginScreen onLogin={handleLogin} />
-  // Themen-Auswahl wenn mehr als 1 Einheit und noch keine gewählt
-  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setScreen('menu') }} />
-
   const handleFinish = useCallback((game: Screen, score: number, total: number, coinsEarned: number) => {
     setResult({ game, score, total, coinsEarned })
     if (score === total) { setShowConfetti(true); setTimeout(() => setShowConfetti(false), 3500) }
@@ -1024,6 +1019,11 @@ export default function App() {
   }, [])
 
   const handlePlayDuell = useCallback(() => { addCoins(-DUELL_COST); setScreen('duell') }, [addCoins])
+
+  // Login-Screen anzeigen wenn nicht eingeloggt
+  if (!pbUser) return <LoginScreen onLogin={handleLogin} />
+  // Themen-Auswahl wenn mehr als 1 Einheit und noch keine gewählt
+  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setScreen('menu') }} />
 
   const GAMES = [
     { id: 'blitz'      as Screen, emoji: '⚡', title: 'Blitz-Rechnen',    desc: 'Tippe das Ergebnis ein!',        color: '#FFE66D' },
