@@ -76,6 +76,13 @@ export interface MathUnit {
 
 const CACHE_KEY_MATH = 'lernheld-math-units-v1'
 
+// Hilfsfunktion: JSON-Feld sicher als Array parsen (robust gegen String-Encoding)
+function parseJsonArray(val: unknown): unknown[] {
+  if (Array.isArray(val)) return val
+  if (typeof val === 'string') { try { const p = JSON.parse(val); if (Array.isArray(p)) return p } catch {} }
+  return []
+}
+
 export async function fetchMathUnits(token: string, fallback: MathUnit[]): Promise<MathUnit[]> {
   try {
     const res = await fetch(
@@ -89,9 +96,9 @@ export async function fetchMathUnits(token: string, fallback: MathUnit[]): Promi
       title: r.title,
       subtitle: r.subtitle ?? '',
       emoji: r.emoji ?? '➕',
-      operations: r.operations as Operation[],
+      operations: parseJsonArray(r.operations) as Operation[],
       maxNumber: r.max_number ?? 100,
-      tableOf: r.table_of ?? undefined,
+      tableOf: r.table_of ? parseJsonArray(r.table_of) as number[] : undefined,
     }))
     if (units.length === 0) throw new Error('empty')
     localStorage.setItem(CACHE_KEY_MATH, JSON.stringify(units))

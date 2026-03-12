@@ -834,16 +834,16 @@ function Schatzkiste({ xp, coins, onBack, onPlayDuell }: {
 function UnitPicker({ units, onSelect }: { units: MathUnit[]; onSelect: (unit: MathUnit) => void }) {
   return (
     <div className="app-container">
-      <header className="app-header">
-        <h1 className="app-title"><span className="title-emoji">🦸</span> Mathe-Held</h1>
-        <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: 4 }}>Wähle dein Thema:</p>
-      </header>
+      <div className="unit-picker-header">
+        <h1>🦸 Mathe-Held</h1>
+        <p>Wähle dein Thema:</p>
+      </div>
       <div className="unit-grid">
         {units.map((unit, i) => (
           <button
             key={unit.id}
             className="unit-card"
-            style={{ animationDelay: `${i * 0.08}s` }}
+            style={{ animationDelay: `${i * 0.1}s` }}
             onClick={() => onSelect(unit)}
           >
             <span className="unit-emoji">{unit.emoji}</span>
@@ -929,20 +929,24 @@ export default function App() {
   const [result, setResult]       = useState<GameResult | null>(null)
   const [pbUser, setPbUser]       = useState<PbUser | null>(null)
   const [mathUnits, setMathUnits] = useState<MathUnit[]>(MATH_UNITS_FALLBACK)
-  const [selectedUnit, setSelectedUnit] = useState<MathUnit | null>(
-    MATH_UNITS_FALLBACK.length === 1 ? MATH_UNITS_FALLBACK[0] : null
-  )
+  const [selectedUnit, setSelectedUnit] = useState<MathUnit | null>(null)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const level = getLevel(xp); const xpInLevel = getXpInLevel(xp); const difficulty = getDifficulty(level)
 
-  // Beim Start: gespeicherte Auth laden
+  // Beim Start: gespeicherte Auth laden + Einheiten refreshen
   useEffect(() => {
     const saved = getSavedAuth()
     if (saved) {
       setPbUser(saved)
       saveXp(saved.xp); setXp(saved.xp)
       saveCoins(saved.coins); setCoins(saved.coins)
+      // Einheiten im Hintergrund laden (aus Cache oder PocketBase)
+      fetchMathUnits(saved.token, MATH_UNITS_FALLBACK).then(units => {
+        setMathUnits(units)
+        if (units.length === 1) setSelectedUnit(units[0])
+        // Bei mehreren Einheiten: null → UnitPicker zeigen
+      })
     }
   }, [])
 
@@ -959,11 +963,11 @@ export default function App() {
     setPbUser(user)
     saveXp(user.xp); setXp(user.xp)
     saveCoins(user.coins); setCoins(user.coins)
+    setSelectedUnit(null) // Immer UnitPicker zeigen nach Login
     // Dynamische Einheiten von PocketBase laden (Stale-While-Revalidate)
     fetchMathUnits(user.token, MATH_UNITS_FALLBACK).then(units => {
       setMathUnits(units)
-      // Auto-select wenn nur eine Einheit vorhanden
-      if (units.length === 1) setSelectedUnit(units[0])
+      if (units.length === 1) setSelectedUnit(units[0]) // Auto-select nur bei 1 Einheit
     })
   }, [])
 
