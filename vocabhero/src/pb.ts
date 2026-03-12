@@ -59,3 +59,95 @@ export async function syncToServer(user: PbUser, coins: number, xp: number, leve
 export function logout() {
   try { localStorage.removeItem(AUTH_KEY) } catch {}
 }
+
+// ─── Dynamic Vocab Units ──────────────────────────────────────────────────────
+
+export interface VocabItem {
+  en: string
+  de: string
+  type: 'word' | 'phrase'
+}
+
+export interface VocabUnit {
+  id: string
+  title: string
+  subtitle: string
+  emoji: string
+  targetUser: string
+  itemCount?: number
+}
+
+const CACHE_KEY_VOCAB = 'lernheld-vocab-units-v1'
+
+export async function fetchVocabUnits(token: string, fallback: VocabUnit[]): Promise<VocabUnit[]> {
+  try {
+    const res = await fetch(
+      `${PB_URL}/api/collections/vocab_units/records?filter=(active=true)&sort=sort_order&perPage=50`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    if (!res.ok) throw new Error('fetch failed')
+    const data = await res.json()
+    const units: VocabUnit[] = (data.items ?? []).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      subtitle: r.subtitle ?? '',
+      emoji: r.emoji ?? '📚',
+      targetUser: r.target_user ?? '',
+    }))
+    if (units.length === 0) throw new Error('empty')
+    localStorage.setItem(CACHE_KEY_VOCAB, JSON.stringify(units))
+    return units
+  } catch {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY_VOCAB)
+      if (cached) return JSON.parse(cached)
+    } catch {}
+    return fallback
+  }
+}
+
+export async function fetchVocabItems(token: string, unitId: string): Promise<VocabItem[]> {
+  const res = await fetch(
+    `${PB_URL}/api/collections/vocab_items/records?filter=(unit='${unitId}')&sort=sort_order,en&perPage=200`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  )
+  if (!res.ok) throw new Error('Wörter laden fehlgeschlagen')
+  const data = await res.json()
+  return (data.items ?? []).map((r: any) => ({
+    en: r.en,
+    de: r.de,
+    type: r.type ?? 'word',
+  }))
+}
+
+// ─── Activity Log ─────────────────────────────────────────────────────────────
+
+export async function logActivity(user: PbUser, entry: {
+  app: string
+  unit_id: string
+  unit_title: string
+  game_mode: string
+  score: number
+  total: number
+  coins_earned: number
+}): Promise<void> {
+  try {
+    await fetch(`${PB_URL}/api/collections/activity_log/records`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({
+        user: user.id,
+        app: entry.app,
+        unit_id: entry.unit_id,
+        unit_title: entry.unit_title,
+        game_mode: entry.game_mode,
+        score: entry.score,
+        total: entry.total,
+        coins_earned: entry.coins_earned,
+      }),
+    })
+  } catch { /* silent failure */ }
+}

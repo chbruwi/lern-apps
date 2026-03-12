@@ -1,29 +1,28 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
-import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
+import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, PbUser, VocabItem, VocabUnit } from './pb'
 
 // ============================================================
 // VOCABULARY DATA
 // ============================================================
-// Neue Units hier anhängen! Einfach ein neues Objekt in UNITS eintragen,
-// dann npm run build ausführen und deployen.
+// Unit = VocabUnit + cached vocab items. Fallback enthält
+// hardcodierte Daten; nach Login werden Einheiten von PocketBase geladen.
 // ============================================================
-
-interface VocabItem {
-  en: string
-  de: string
-  type: 'word' | 'phrase'
-}
 
 interface Unit {
   id: string
-  title: string       // z.B. "Unit 3"
-  subtitle: string    // z.B. "Accidents & First Aid"
+  title: string
+  subtitle: string
   emoji: string
-  vocab: VocabItem[]
+  vocab: VocabItem[]  // leer wenn noch nicht geladen
+  itemCount?: number  // Hinweis-Anzahl von PocketBase
 }
 
-const UNITS: Unit[] = [
+function pbUnitToUnit(u: VocabUnit): Unit {
+  return { id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, vocab: [], itemCount: u.itemCount }
+}
+
+const UNITS_FALLBACK: Unit[] = [
   {
     id: 'unit3',
     title: 'Unit 3',
@@ -60,17 +59,7 @@ const UNITS: Unit[] = [
       { en: 'safety first', de: 'Sicherheit geht vor', type: 'phrase' },
     ]
   },
-  // Neue Unit hier anhängen ↓
-  // {
-  //   id: 'unit4',
-  //   title: 'Unit 4',
-  //   subtitle: 'Thema der neuen Einheit',
-  //   emoji: '📚',
-  //   vocab: [
-  //     { en: 'englisches Wort', de: 'deutsches Wort', type: 'word' },
-  //     { en: 'This is a phrase.', de: 'Das ist ein Satz.', type: 'phrase' },
-  //   ]
-  // },
+  // Weitere Fallback-Units ggf. hier anhängen (werden durch PocketBase ersetzt)
 ]
 
 // ============================================================
@@ -637,7 +626,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: PbUser) => void }) {
 // UNIT PICKER
 // ============================================================
 
-function UnitPicker({ onSelect }: { onSelect: (unit: Unit) => void }) {
+function UnitPicker({ units, onSelect }: { units: Unit[]; onSelect: (unit: Unit) => void }) {
   return (
     <div className="app">
       <header className="hero">
@@ -645,7 +634,7 @@ function UnitPicker({ onSelect }: { onSelect: (unit: Unit) => void }) {
         <p className="hero-sub">Choose your unit</p>
       </header>
       <div className="unit-grid">
-        {UNITS.map((unit, i) => (
+        {units.map((unit, i) => (
           <button
             key={unit.id}
             className="unit-card"
@@ -655,7 +644,7 @@ function UnitPicker({ onSelect }: { onSelect: (unit: Unit) => void }) {
             <span className="unit-emoji">{unit.emoji}</span>
             <span className="unit-title">{unit.title}</span>
             <span className="unit-subtitle">{unit.subtitle}</span>
-            <span className="unit-count">{unit.vocab.length} words</span>
+            <span className="unit-count">{unit.itemCount ?? unit.vocab.length} words</span>
           </button>
         ))}
       </div>
@@ -678,7 +667,9 @@ const GAMES = [
 
 function App() {
   const [view, setView] = useState<View>('menu')
+  const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
+  const [loadingVocab, setLoadingVocab] = useState(false)
   const [totalScore, setTotalScore] = useState(0)
   const [level, setLevel] = useState(1)
   const [levelUp, setLevelUp] = useState(false)
@@ -694,8 +685,8 @@ function App() {
       setTotalScore(serverXp)
       setLevel(Math.floor(serverXp / 120) + 1)
     }
-    // Auto-select if only one unit
-    if (UNITS.length === 1) setSelectedUnit(UNITS[0])
+    // Auto-select if only one fallback unit
+    if (UNITS_FALLBACK.length === 1) setSelectedUnit(UNITS_FALLBACK[0])
   }, [])
 
   // Debounced sync to server on score change
@@ -712,6 +703,33 @@ function App() {
     const serverXp = user.xp ?? 0
     setTotalScore(serverXp)
     setLevel(Math.floor(serverXp / 120) + 1)
+    // Dynamische Einheiten von PocketBase laden
+    fetchVocabUnits(user.token, UNITS_FALLBACK.map(u => ({ id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, targetUser: '' }))).then(pbUnits => {
+      const loaded = pbUnits.map(pbUnitToUnit)
+      setUnits(loaded)
+      if (loaded.length === 1) setSelectedUnit(loaded[0])
+    })
+  }
+
+  // Wählt eine Unit aus und lädt bei Bedarf die Vokabeln lazy von PocketBase
+  const handleSelectUnit = async (unit: Unit) => {
+    if (unit.vocab.length > 0) {
+      setSelectedUnit(unit); setView('menu'); return
+    }
+    if (!pbUser) {
+      setSelectedUnit(unit); setView('menu'); return
+    }
+    setLoadingVocab(true)
+    try {
+      const items = await fetchVocabItems(pbUser.token, unit.id)
+      const loaded = { ...unit, vocab: items }
+      setSelectedUnit(loaded)
+      setUnits(prev => prev.map(u => u.id === unit.id ? loaded : u))
+    } catch {
+      setSelectedUnit(unit)  // Fallback: leere Vokabeln
+    }
+    setLoadingVocab(false)
+    setView('menu')
   }
 
   const handleLogout = () => {
@@ -719,13 +737,19 @@ function App() {
     setPbUser(null)
     setTotalScore(0)
     setLevel(1)
-    setSelectedUnit(UNITS.length === 1 ? UNITS[0] : null)
+    setUnits(UNITS_FALLBACK)
+    setSelectedUnit(UNITS_FALLBACK.length === 1 ? UNITS_FALLBACK[0] : null)
   }
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
-  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setView('menu') }} />
+  if (loadingVocab) return (
+    <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <p style={{ fontSize: '1.3rem', color: 'var(--text-muted)' }}>⏳ Lade Wörter...</p>
+    </div>
+  )
+  if (!selectedUnit) return <UnitPicker units={units} onSelect={handleSelectUnit} />
 
-  const addScore = (pts: number) => {
+  const addScore = (pts: number, gameMode?: View) => {
     setTotalScore(prev => {
       const next = prev + pts
       const newLvl = Math.floor(next / 120) + 1
@@ -736,6 +760,18 @@ function App() {
       }
       return next
     })
+    // Activity Log – fire and forget
+    if (pbUser && selectedUnit && pts > 0) {
+      logActivity(pbUser, {
+        app: 'vocabhero',
+        unit_id: selectedUnit.id,
+        unit_title: selectedUnit.title,
+        game_mode: gameMode ?? view,
+        score: pts,
+        total: pts,
+        coins_earned: 0,
+      })
+    }
   }
 
   const goMenu = () => setView('menu')
@@ -790,7 +826,7 @@ function App() {
 
       <p className="footer-text">{selectedUnit.vocab.length} Vokabeln · Englisch ↔ Deutsch</p>
       <div className="footer-links">
-        {UNITS.length > 1 && (
+        {units.length > 1 && (
           <button className="unit-switch-btn" onClick={() => setSelectedUnit(null)}>📚 Unit wechseln</button>
         )}
         <a href="../" className="home-link">🏠 Alle Apps</a>

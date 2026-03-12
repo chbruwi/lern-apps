@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import './App.css'
-import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
+import { getSavedAuth, loginWithCode, syncToServer, logout, fetchMathUnits, logActivity, PbUser, MathUnit } from './pb'
 
 // ============================================================
 // TYPES
@@ -15,22 +15,13 @@ interface GameResult {
 }
 
 // ============================================================
-// MATH UNITS – von Eltern definierbar
+// MATH UNITS – Fallback (Offline / vor PocketBase-Sync)
 // ============================================================
-// Neue Einheiten hier anhängen! Dann npm run build und deployen.
+// Operation & MathUnit types kommen aus pb.ts
+// Echte Einheiten werden nach Login von PocketBase geladen.
 // ============================================================
-type Operation = 'add' | 'sub' | 'mul' | 'div'
-interface MathUnit {
-  id: string
-  title: string       // z.B. "Plus & Minus"
-  subtitle: string    // z.B. "Zehnerübergreifend bis 100"
-  emoji: string
-  operations: Operation[]
-  maxNumber: number   // für add/sub: max Ergebnis; für mul/div: max Tabellenzahl
-  tableOf?: number[]  // Einmaleins-Reihen, z.B. [2, 5, 10]
-}
 
-const MATH_UNITS: MathUnit[] = [
+const MATH_UNITS_FALLBACK: MathUnit[] = [
   {
     id: 'plus-minus-100',
     title: 'Plus & Minus',
@@ -39,35 +30,8 @@ const MATH_UNITS: MathUnit[] = [
     operations: ['add', 'sub'],
     maxNumber: 100,
   },
-  // Neue Einheiten einfach hier anhängen ↓
-  // {
-  //   id: 'einmaleins',
-  //   title: 'Mal-Einmaleins',
-  //   subtitle: '2er bis 10er Reihe',
-  //   emoji: '✖️',
-  //   operations: ['mul'],
-  //   maxNumber: 10,
-  //   tableOf: [2, 3, 4, 5, 6, 7, 8, 9, 10],
-  // },
-  // {
-  //   id: 'division',
-  //   title: 'Teilen',
-  //   subtitle: 'Einfache Division',
-  //   emoji: '➗',
-  //   operations: ['div'],
-  //   maxNumber: 10,
-  //   tableOf: [2, 5, 10],
-  // },
-  // {
-  //   id: 'gemischt',
-  //   title: 'Mal & Teilen',
-  //   subtitle: 'Einmaleins gemischt',
-  //   emoji: '🔀',
-  //   operations: ['mul', 'div'],
-  //   maxNumber: 10,
-  //   tableOf: [2, 3, 4, 5, 10],
-  // },
 ]
+
 
 interface GameProps {
   onFinish: (game: Screen, score: number, total: number, coins: number) => void
@@ -867,7 +831,7 @@ function Schatzkiste({ xp, coins, onBack, onPlayDuell }: {
 // ============================================================
 // UNIT PICKER
 // ============================================================
-function UnitPicker({ onSelect }: { onSelect: (unit: MathUnit) => void }) {
+function UnitPicker({ units, onSelect }: { units: MathUnit[]; onSelect: (unit: MathUnit) => void }) {
   return (
     <div className="app-container">
       <header className="app-header">
@@ -875,7 +839,7 @@ function UnitPicker({ onSelect }: { onSelect: (unit: MathUnit) => void }) {
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: 4 }}>Wähle dein Thema:</p>
       </header>
       <div className="unit-grid">
-        {MATH_UNITS.map((unit, i) => (
+        {units.map((unit, i) => (
           <button
             key={unit.id}
             className="unit-card"
@@ -964,8 +928,9 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [result, setResult]       = useState<GameResult | null>(null)
   const [pbUser, setPbUser]       = useState<PbUser | null>(null)
+  const [mathUnits, setMathUnits] = useState<MathUnit[]>(MATH_UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<MathUnit | null>(
-    MATH_UNITS.length === 1 ? MATH_UNITS[0] : null
+    MATH_UNITS_FALLBACK.length === 1 ? MATH_UNITS_FALLBACK[0] : null
   )
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -994,6 +959,12 @@ export default function App() {
     setPbUser(user)
     saveXp(user.xp); setXp(user.xp)
     saveCoins(user.coins); setCoins(user.coins)
+    // Dynamische Einheiten von PocketBase laden (Stale-While-Revalidate)
+    fetchMathUnits(user.token, MATH_UNITS_FALLBACK).then(units => {
+      setMathUnits(units)
+      // Auto-select wenn nur eine Einheit vorhanden
+      if (units.length === 1) setSelectedUnit(units[0])
+    })
   }, [])
 
   const handleLogout = useCallback(() => {
@@ -1016,14 +987,26 @@ export default function App() {
     setResult({ game, score, total, coinsEarned })
     if (score === total) { setShowConfetti(true); setTimeout(() => setShowConfetti(false), 3500) }
     setScreen('complete')
-  }, [])
+    // Activity Log – fire and forget
+    if (pbUser && selectedUnit) {
+      logActivity(pbUser, {
+        app: 'mathe-held',
+        unit_id: selectedUnit.id,
+        unit_title: selectedUnit.title,
+        game_mode: game,
+        score,
+        total,
+        coins_earned: coinsEarned,
+      })
+    }
+  }, [pbUser, selectedUnit])
 
   const handlePlayDuell = useCallback(() => { addCoins(-DUELL_COST); setScreen('duell') }, [addCoins])
 
   // Login-Screen anzeigen wenn nicht eingeloggt
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
   // Themen-Auswahl wenn mehr als 1 Einheit und noch keine gewählt
-  if (!selectedUnit) return <UnitPicker onSelect={u => { setSelectedUnit(u); setScreen('menu') }} />
+  if (!selectedUnit) return <UnitPicker units={mathUnits} onSelect={u => { setSelectedUnit(u); setScreen('menu') }} />
 
   const GAMES = [
     { id: 'blitz'      as Screen, emoji: '⚡', title: 'Blitz-Rechnen',    desc: 'Tippe das Ergebnis ein!',        color: '#FFE66D' },
@@ -1083,7 +1066,7 @@ export default function App() {
           </button>
           <footer className="app-footer">Viel Spass! 🎉</footer>
           <div className="footer-links">
-            {MATH_UNITS.length > 1 && (
+            {mathUnits.length > 1 && (
               <button className="unit-switch-btn" onClick={() => setSelectedUnit(null)}>📚 Thema wechseln</button>
             )}
             <a href="../" className="home-link">🏠 Alle Apps</a>

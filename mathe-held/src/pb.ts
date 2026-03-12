@@ -59,3 +59,80 @@ export async function syncToServer(user: PbUser, coins: number, xp: number, leve
 export function logout() {
   try { localStorage.removeItem(AUTH_KEY) } catch {}
 }
+
+// ─── Dynamic Math Units ───────────────────────────────────────────────────────
+
+export type Operation = 'add' | 'sub' | 'mul' | 'div'
+
+export interface MathUnit {
+  id: string
+  title: string
+  subtitle: string
+  emoji: string
+  operations: Operation[]
+  maxNumber: number
+  tableOf?: number[]
+}
+
+const CACHE_KEY_MATH = 'lernheld-math-units-v1'
+
+export async function fetchMathUnits(token: string, fallback: MathUnit[]): Promise<MathUnit[]> {
+  try {
+    const res = await fetch(
+      `${PB_URL}/api/collections/math_units/records?filter=(active=true)&sort=sort_order&perPage=50`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    if (!res.ok) throw new Error('fetch failed')
+    const data = await res.json()
+    const units: MathUnit[] = (data.items ?? []).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      subtitle: r.subtitle ?? '',
+      emoji: r.emoji ?? '➕',
+      operations: r.operations as Operation[],
+      maxNumber: r.max_number ?? 100,
+      tableOf: r.table_of ?? undefined,
+    }))
+    if (units.length === 0) throw new Error('empty')
+    localStorage.setItem(CACHE_KEY_MATH, JSON.stringify(units))
+    return units
+  } catch {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY_MATH)
+      if (cached) return JSON.parse(cached)
+    } catch {}
+    return fallback
+  }
+}
+
+// ─── Activity Log ─────────────────────────────────────────────────────────────
+
+export async function logActivity(user: PbUser, entry: {
+  app: string
+  unit_id: string
+  unit_title: string
+  game_mode: string
+  score: number
+  total: number
+  coins_earned: number
+}): Promise<void> {
+  try {
+    await fetch(`${PB_URL}/api/collections/activity_log/records`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({
+        user: user.id,
+        app: entry.app,
+        unit_id: entry.unit_id,
+        unit_title: entry.unit_title,
+        game_mode: entry.game_mode,
+        score: entry.score,
+        total: entry.total,
+        coins_earned: entry.coins_earned,
+      }),
+    })
+  } catch { /* silent failure – offline or NAS unreachable */ }
+}
