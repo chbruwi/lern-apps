@@ -3,52 +3,211 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lern-Apps</title>
+<title>LernApps</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Outfit',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#faf7f5;color:#1e1b4b}
-h1{font-size:2.4rem;font-weight:800;margin-bottom:8px;text-align:center}
-h1 span{background:linear-gradient(135deg,#ec4899,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.sub{color:#6b7280;margin-bottom:32px;text-align:center}
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:480px;width:100%;grid-auto-rows:1fr}
-.card{text-decoration:none;color:#1e1b4b;background:#fff;border:2px solid #e5e7eb;border-radius:16px;padding:28px 16px;text-align:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+
+/* ── Login Screen ── */
+#login-section{display:flex;flex-direction:column;align-items:center;width:100%;max-width:380px}
+.logo{font-size:2.4rem;font-weight:800;margin-bottom:6px;text-align:center}
+.logo span{background:linear-gradient(135deg,#ec4899,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-sub{color:#6b7280;margin-bottom:36px;text-align:center;font-size:1rem}
+.login-box{background:#fff;border:2px solid #e5e7eb;border-radius:20px;padding:28px 24px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.06)}
+.login-label{font-size:.9rem;font-weight:600;color:#6b7280;margin-bottom:10px;text-align:center}
+.name-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.name-btn{padding:16px 8px;border:2px solid #e5e7eb;border-radius:12px;background:#fff;cursor:pointer;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;color:#4b5563;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.name-btn .btn-emoji{font-size:2rem}
+.name-btn:hover{border-color:#8b5cf6;color:#6d28d9;background:#f5f3ff}
+.name-btn.active{border-color:#8b5cf6;background:#f5f3ff;color:#6d28d9;box-shadow:0 0 0 3px rgba(139,92,246,.2)}
+.code-row{display:flex;gap:10px}
+.code-input{flex:1;padding:14px 16px;border:2px solid #e5e7eb;border-radius:12px;font-family:'Outfit',sans-serif;font-size:1.3rem;font-weight:700;letter-spacing:4px;text-align:center;outline:none;transition:border-color .15s;color:#1e1b4b}
+.code-input:focus{border-color:#8b5cf6}
+.code-input::placeholder{letter-spacing:1px;font-size:1rem;font-weight:400;color:#d1d5db}
+.login-btn{padding:14px 20px;background:linear-gradient(135deg,#8b5cf6,#ec4899);border:none;border-radius:12px;color:#fff;font-family:'Outfit',sans-serif;font-size:1.1rem;font-weight:700;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.login-btn:hover{opacity:.9}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.error-msg{color:#ef4444;font-size:.9rem;text-align:center;margin-top:12px;min-height:20px;font-weight:600}
+.eltern-link{margin-top:20px;font-size:.85rem;color:#9ca3af;text-align:center}
+.eltern-link a{color:#6366f1;text-decoration:none;font-weight:600}
+.eltern-link a:hover{text-decoration:underline}
+
+/* ── App Grid ── */
+#app-section{display:none;flex-direction:column;align-items:center;width:100%;max-width:480px}
+.welcome-row{display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:6px}
+.welcome-title{font-size:2rem;font-weight:800}
+.welcome-title span{background:linear-gradient(135deg,#ec4899,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logout-btn{padding:8px 14px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;font-family:'Outfit',sans-serif;font-size:.85rem;font-weight:600;color:#6b7280;cursor:pointer;transition:all .15s}
+.logout-btn:hover{border-color:#ef4444;color:#ef4444;background:#fef2f2}
+.welcome-sub{color:#6b7280;margin-bottom:28px;width:100%;font-size:1rem}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;grid-auto-rows:1fr}
+.card{text-decoration:none;color:#1e1b4b;background:#fff;border:2px solid #e5e7eb;border-radius:16px;padding:24px 14px;text-align:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
 .card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.1);border-color:#8b5cf6}
-.card-emoji{font-size:3rem;display:block;margin-bottom:8px}
-.card-title{font-size:1.1rem;font-weight:700;margin-bottom:4px}
-.card-desc{font-size:.85rem;color:#6b7280}
+.card-emoji{font-size:2.8rem;display:block;margin-bottom:8px}
+.card-title{font-size:1.05rem;font-weight:700;margin-bottom:4px}
+.card-desc{font-size:.82rem;color:#6b7280}
 .card-fun{border-color:#f59e0b;background:linear-gradient(135deg,#fffbeb,#fff)}
 .card-fun:hover{border-color:#f59e0b;box-shadow:0 8px 24px rgba(245,158,11,.2)}
-@media(max-width:420px){.cards{grid-template-columns:1fr}h1{font-size:1.8rem}}
+.coins-badge{display:inline-flex;align-items:center;gap:4px;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:20px;padding:4px 12px;font-size:.85rem;font-weight:700;color:#92400e;margin-bottom:20px}
+@media(max-width:420px){.cards{grid-template-columns:1fr}.welcome-title{font-size:1.6rem}}
 </style>
 </head>
 <body>
-<h1>Lern<span>Apps</span> 🎓</h1>
-<p class="sub">Wähle eine App:</p>
-<div class="cards">
-  <a href="wort-abenteuer/" class="card">
-    <span class="card-emoji">🌟</span>
-    <div class="card-title">Wort-Abenteuer</div>
-    <div class="card-desc">200 wichtigste deutsche Wörter für Andrin</div>
-  </a>
-  <a href="vocabhero/" class="card">
-    <span class="card-emoji">🃏</span>
-    <div class="card-title">VocabHero</div>
-    <div class="card-desc">English Unit 3 – Accidents & First Aid für Fiona</div>
-  </a>
-  <a href="mathe-held/" class="card">
-    <span class="card-emoji">🦸</span>
-    <div class="card-title">Mathe-Held</div>
-    <div class="card-desc">Rechnen bis 100 – zehnerübergreifend für Andrin</div>
-  </a>
-  <a href="spielecke/" class="card card-fun">
-    <span class="card-emoji">🎮</span>
-    <div class="card-title">Spielecke</div>
-    <div class="card-desc">Spiele mit deinen Münzen – Glücksrad, Ballons & mehr!</div>
-  </a>
+
+<!-- LOGIN SCREEN -->
+<div id="login-section">
+  <div class="logo">Lern<span>Apps</span> 🎓</div>
+  <p class="logo-sub">Melde dich an, um loszulegen!</p>
+  <div class="login-box">
+    <div class="login-label">Wer bist du?</div>
+    <div class="name-buttons">
+      <button class="name-btn" id="btn-andrin" onclick="selectName('andrin')">
+        <span class="btn-emoji">🦸</span>Andrin
+      </button>
+      <button class="name-btn" id="btn-fiona" onclick="selectName('fiona')">
+        <span class="btn-emoji">🌸</span>Fiona
+      </button>
+    </div>
+    <div class="login-label">Dein Code:</div>
+    <div class="code-row">
+      <input class="code-input" id="code-input" type="tel" maxlength="6" placeholder="------"
+        oninput="clearError()" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="login-btn" id="login-btn" onclick="doLogin()">▶</button>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+  <p class="eltern-link"><a href="eltern-panel/">🔑 Eltern-Zugang</a></p>
 </div>
-<p style="margin-top:32px;font-size:.8rem;color:#9ca3af;text-align:center">
-  <a href="eltern-panel/" style="color:#6366f1;text-decoration:none;font-weight:600">🔑 Eltern-Zugang</a>
-</p>
+
+<!-- APP SCREEN -->
+<div id="app-section">
+  <div class="welcome-row">
+    <div class="welcome-title">Hallo, <span id="username-display"></span>! 👋</div>
+    <button class="logout-btn" onclick="doLogout()">Abmelden</button>
+  </div>
+  <div class="welcome-sub">Was möchtest du heute machen?</div>
+  <div class="coins-badge">🪙 <span id="coins-display">0</span> Münzen</div>
+  <div class="cards" id="app-cards"></div>
+  <p style="margin-top:20px;font-size:.8rem;color:#d1d5db;text-align:center">
+    <a href="eltern-panel/" style="color:#c7d2fe;text-decoration:none;font-weight:600">🔑 Eltern-Zugang</a>
+  </p>
+</div>
+
+<script>
+const PB_URL = 'https://lernheld.synology.me'
+const AUTH_KEY = 'lernheld-pb-auth'
+const COINS_KEY = 'lernheld-v1-coins'
+
+const ALL_APPS = [
+  { href: 'wort-abenteuer/', emoji: '🌟', title: 'Wort-Abenteuer', desc: '200 wichtigste deutsche Wörter', users: ['andrin'] },
+  { href: 'vocabhero/',      emoji: '🃏', title: 'VocabHero',       desc: 'Englisch – Accidents & First Aid', users: ['fiona'] },
+  { href: 'mathe-held/',     emoji: '🦸', title: 'Mathe-Held',      desc: 'Rechnen bis 100', users: ['andrin'] },
+  { href: 'spielecke/',      emoji: '🎮', title: 'Spielecke',       desc: 'Spiele mit deinen Münzen!', users: ['andrin','fiona'], fun: true },
+]
+
+let selectedName = ''
+
+function selectName(name) {
+  selectedName = name
+  document.querySelectorAll('.name-btn').forEach(b => b.classList.remove('active'))
+  document.getElementById('btn-' + name).classList.add('active')
+  document.getElementById('code-input').focus()
+  clearError()
+}
+
+function clearError() {
+  document.getElementById('error-msg').textContent = ''
+}
+
+async function doLogin() {
+  if (!selectedName) {
+    document.getElementById('error-msg').textContent = 'Bitte zuerst deinen Namen wählen!'
+    return
+  }
+  const code = document.getElementById('code-input').value.trim()
+  if (!code) {
+    document.getElementById('error-msg').textContent = 'Bitte deinen Code eingeben!'
+    return
+  }
+  const btn = document.getElementById('login-btn')
+  btn.disabled = true
+  btn.textContent = '...'
+  try {
+    const res = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: selectedName, password: code })
+    })
+    if (!res.ok) throw new Error()
+    const data = await res.json()
+    const user = {
+      id: data.record.id,
+      username: data.record.username,
+      coins: data.record.coins ?? 0,
+      xp: data.record.xp ?? 0,
+      level: data.record.level ?? 1,
+      token: data.token
+    }
+    localStorage.setItem(AUTH_KEY, JSON.stringify(user))
+    showAppScreen(user)
+  } catch {
+    document.getElementById('error-msg').textContent = 'Falscher Code – versuch es nochmal!'
+  } finally {
+    btn.disabled = false
+    btn.textContent = '▶'
+  }
+}
+
+function showAppScreen(user) {
+  document.getElementById('login-section').style.display = 'none'
+  const appSection = document.getElementById('app-section')
+  appSection.style.display = 'flex'
+
+  // Capitalize username
+  const name = user.username.charAt(0).toUpperCase() + user.username.slice(1)
+  document.getElementById('username-display').textContent = name
+
+  // Coins from localStorage (shared key)
+  const coins = parseInt(localStorage.getItem(COINS_KEY) || '0') || user.coins || 0
+  document.getElementById('coins-display').textContent = coins
+
+  // Render cards for this user
+  const grid = document.getElementById('app-cards')
+  grid.innerHTML = ''
+  ALL_APPS.filter(a => a.users.includes(user.username)).forEach(app => {
+    const a = document.createElement('a')
+    a.href = app.href
+    a.className = 'card' + (app.fun ? ' card-fun' : '')
+    a.innerHTML = `<span class="card-emoji">${app.emoji}</span>
+      <div class="card-title">${app.title}</div>
+      <div class="card-desc">${app.desc}</div>`
+    grid.appendChild(a)
+  })
+}
+
+function doLogout() {
+  localStorage.removeItem(AUTH_KEY)
+  document.getElementById('app-section').style.display = 'none'
+  document.getElementById('login-section').style.display = 'flex'
+  // Reset form
+  selectedName = ''
+  document.querySelectorAll('.name-btn').forEach(b => b.classList.remove('active'))
+  document.getElementById('code-input').value = ''
+  clearError()
+}
+
+// On page load: check if already logged in
+;(function() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null')
+    if (saved && saved.token && saved.username) {
+      showAppScreen(saved)
+      return
+    }
+  } catch {}
+  // not logged in — show login screen (already visible by default)
+})()
+</script>
 </body>
 </html>
