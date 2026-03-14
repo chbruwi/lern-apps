@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 import { getSavedAuth, loginWithCode, syncToServer, logout, PbUser } from './pb'
 
+// Shared coin storage (same key as Mathe-Held & Spielecke)
+const SK_COINS = 'lernheld-v1-coins'
+const loadCoins = (): number => { try { return Math.max(0, parseInt(localStorage.getItem(SK_COINS) || '0') || 0) } catch { return 0 } }
+const saveCoins = (v: number) => { try { localStorage.setItem(SK_COINS, String(Math.max(0, v))) } catch {} }
+
 // ============================================================
 // DATA
 // ============================================================
@@ -363,10 +368,10 @@ function WoerterMemory({ onScore, onBack }: { onScore: (pts: number) => void; on
           setMatched(prev => {
             const newMatched = [...prev, a, b]
             if (newMatched.length === cards.length) {
-              onScore(30)
+              onScore(8)
               setShowConfetti(true)
             } else {
-              onScore(5)
+              onScore(3)
             }
             return newMatched
           })
@@ -462,7 +467,7 @@ function VerbWerkstatt({ onScore, onBack }: { onScore: (pts: number) => void; on
     if (endung === correct) {
       setFeedback('correct')
       setScore(s => s + 1)
-      onScore(10)
+      onScore(3)
       setShowStar(true)
       setTimeout(() => setShowStar(false), 600)
       if (round >= 10) {
@@ -540,7 +545,7 @@ function VerbWerkstatt({ onScore, onBack }: { onScore: (pts: number) => void; on
       </div>
 
       <div className="verb-score">
-        ⭐ {score} richtig
+        ✅ {score} richtig
       </div>
     </div>
   )
@@ -585,7 +590,7 @@ function TierlauteQuiz({ onScore, onBack }: { onScore: (pts: number) => void; on
     if (laut === current.laut) {
       setFeedback('correct')
       setScore(s => s + 1)
-      onScore(10)
+      onScore(3)
       setShowStar(true)
       setTimeout(() => setShowStar(false), 600)
     } else {
@@ -600,7 +605,7 @@ function TierlauteQuiz({ onScore, onBack }: { onScore: (pts: number) => void; on
       } else {
         setCurrentIdx(nextIdx)
         setShowConfetti(true)
-        onScore(20)
+        onScore(5)
       }
     }, 1500)
   }
@@ -709,7 +714,7 @@ function WoerterKategorien({ onScore, onBack }: { onScore: (pts: number) => void
     if (art === current.art) {
       setFeedback('correct')
       setScore(s => s + 1)
-      onScore(10)
+      onScore(3)
       setShowStar(true)
       setTimeout(() => setShowStar(false), 600)
     } else {
@@ -725,7 +730,7 @@ function WoerterKategorien({ onScore, onBack }: { onScore: (pts: number) => void
       } else {
         setCurrentIdx(nextIdx)
         setShowConfetti(true)
-        onScore(20)
+        onScore(5)
       }
     }, 1200)
   }
@@ -840,35 +845,40 @@ type GameModule = 'menu' | 'memory' | 'verb' | 'tierlaute' | 'kategorien'
 
 function App() {
   const [activeGame, setActiveGame] = useState<GameModule>('menu')
+  const [coins, setCoins] = useState(loadCoins)
   const [totalScore, setTotalScore] = useState(0)
   const [level, setLevel] = useState(1)
   const [showLevelUp, setShowLevelUp] = useState(false)
   const [pbUser, setPbUser] = useState<PbUser | null>(null)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load saved auth on mount and seed score from server
+  // Load saved auth on mount and seed from server
   useEffect(() => {
     const saved = getSavedAuth()
     if (saved) {
       setPbUser(saved)
+      const serverCoins = saved.coins ?? 0
       const serverXp = saved.xp ?? 0
+      setCoins(serverCoins); saveCoins(serverCoins)
       setTotalScore(serverXp)
       setLevel(Math.floor(serverXp / 100) + 1)
     }
   }, [])
 
-  // Debounced sync to server on score change
+  // Debounced sync to server on coins/score change
   useEffect(() => {
     if (!pbUser) return
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
     syncTimerRef.current = setTimeout(() => {
-      syncToServer(pbUser, pbUser.coins, totalScore, Math.floor(totalScore / 100) + 1)
+      syncToServer(pbUser, coins, totalScore, Math.floor(totalScore / 100) + 1)
     }, 3000)
-  }, [totalScore, pbUser])
+  }, [coins, totalScore, pbUser])
 
   const handleLogin = (user: PbUser) => {
     setPbUser(user)
+    const serverCoins = user.coins ?? 0
     const serverXp = user.xp ?? 0
+    setCoins(serverCoins); saveCoins(serverCoins)
     setTotalScore(serverXp)
     setLevel(Math.floor(serverXp / 100) + 1)
   }
@@ -882,7 +892,9 @@ function App() {
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
 
-  const addScore = (pts: number) => {
+  // addCoins: verdient Münzen + erhöht XP für Level-Progression
+  const addCoins = (pts: number) => {
+    setCoins(prev => { const n = Math.max(0, prev + pts); saveCoins(n); return n })
     setTotalScore(prev => {
       const newScore = prev + pts
       const newLevel = Math.floor(newScore / 100) + 1
@@ -921,9 +933,9 @@ function App() {
           </h1>
           <div className="score-bar">
             <div className="score-display">
-              <span className="score-star">⭐</span>
-              <span className="score-number">{totalScore}</span>
-              <span className="score-label">Punkte</span>
+              <span className="score-star">🪙</span>
+              <span className="score-number">{coins}</span>
+              <span className="score-label">Münzen</span>
             </div>
             <div className="level-display">
               <span className="level-badge">Level {level}</span>
@@ -973,13 +985,13 @@ function App() {
         </div>
       )}
       <div className="score-bar-mini">
-        <span>⭐ {totalScore} Punkte</span>
+        <span>🪙 {coins} Münzen</span>
         <span className="level-badge-mini">Level {level}</span>
       </div>
-      {activeGame === 'memory' && <WoerterMemory onScore={addScore} onBack={goBack} />}
-      {activeGame === 'verb' && <VerbWerkstatt onScore={addScore} onBack={goBack} />}
-      {activeGame === 'tierlaute' && <TierlauteQuiz onScore={addScore} onBack={goBack} />}
-      {activeGame === 'kategorien' && <WoerterKategorien onScore={addScore} onBack={goBack} />}
+      {activeGame === 'memory' && <WoerterMemory onScore={addCoins} onBack={goBack} />}
+      {activeGame === 'verb' && <VerbWerkstatt onScore={addCoins} onBack={goBack} />}
+      {activeGame === 'tierlaute' && <TierlauteQuiz onScore={addCoins} onBack={goBack} />}
+      {activeGame === 'kategorien' && <WoerterKategorien onScore={addCoins} onBack={goBack} />}
     </div>
   )
 }

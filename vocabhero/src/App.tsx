@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, PbUser, VocabItem, VocabUnit } from './pb'
 
+// Shared coin storage (same key as Mathe-Held & Spielecke)
+const SK_COINS = 'lernheld-v1-coins'
+const loadCoins = (): number => { try { return Math.max(0, parseInt(localStorage.getItem(SK_COINS) || '0') || 0) } catch { return 0 } }
+const saveCoins = (v: number) => { try { localStorage.setItem(SK_COINS, String(Math.max(0, v))) } catch {} }
+
 // ============================================================
 // VOCABULARY DATA
 // ============================================================
@@ -125,7 +130,7 @@ function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
   useEffect(() => { init() }, [init])
 
   const next = (knew: boolean) => {
-    if (knew) { setKnown(k => k + 1); onScore(5) }
+    if (knew) { setKnown(k => k + 1); onScore(2) }
     else setUnknown(u => u + 1)
     setFlipped(false)
     setTimeout(() => {
@@ -232,10 +237,10 @@ function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: 
       const newMatched = [...matched, id]
       setMatched(newMatched)
       setSelectedLeft(null)
-      onScore(10)
+      onScore(3)
       if (newMatched.length === pairs.length) {
         setShowConfetti(true)
-        onScore(20)
+        onScore(5)
       }
     } else {
       setWrongPair([selectedLeft, id])
@@ -342,7 +347,7 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
             const next = idx + 1
             setIdx(next)
             if (next < questions.length) setupQ(questions, next)
-            else { setShowConfetti(true); onScore(15) }
+            else { setShowConfetti(true); onScore(5) }
           }, 1200)
           return 0
         }
@@ -358,7 +363,7 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
     if (ans === correctAnswer) {
       setFeedback('correct')
       setScore(s => s + 1)
-      onScore(10 + Math.min(timer, 10))
+      onScore(3)
     } else {
       setFeedback('wrong')
     }
@@ -367,7 +372,7 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
       const next = idx + 1
       setIdx(next)
       if (next < questions.length) setupQ(questions, next)
-      else { setShowConfetti(true); onScore(15) }
+      else { setShowConfetti(true); onScore(5) }
     }, 1200)
   }
 
@@ -419,7 +424,7 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
         ))}
       </div>
 
-      <div className="quiz-score">⭐ {score} richtig</div>
+      <div className="quiz-score">✅ {score} richtig</div>
     </div>
   )
 }
@@ -477,12 +482,12 @@ function BuchstabenSalat({ vocab, onScore, onBack }: { vocab: VocabItem[]; onSco
       if (newAnswer.join('') === target) {
         setFeedback('correct')
         setScore(s => s + 1)
-        onScore(15)
+        onScore(4)
         setTimeout(() => {
           const next = idx + 1
           setIdx(next)
           if (next < questions.length) setupQ(questions, next)
-          else { setShowConfetti(true); onScore(20) }
+          else { setShowConfetti(true); onScore(5) }
         }, 1000)
       } else {
         setFeedback('wrong')
@@ -564,7 +569,7 @@ function BuchstabenSalat({ vocab, onScore, onBack }: { vocab: VocabItem[]; onSco
         ))}
       </div>
 
-      <div className="quiz-score">⭐ {score} richtig</div>
+      <div className="quiz-score">✅ {score} richtig</div>
     </div>
   )
 }
@@ -670,18 +675,21 @@ function App() {
   const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [loadingVocab, setLoadingVocab] = useState(false)
+  const [coins, setCoins] = useState(loadCoins)
   const [totalScore, setTotalScore] = useState(0)
   const [level, setLevel] = useState(1)
   const [levelUp, setLevelUp] = useState(false)
   const [pbUser, setPbUser] = useState<PbUser | null>(null)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load saved auth on mount and seed score from server
+  // Load saved auth on mount and seed from server
   useEffect(() => {
     const saved = getSavedAuth()
     if (saved) {
       setPbUser(saved)
+      const serverCoins = saved.coins ?? 0
       const serverXp = saved.xp ?? 0
+      setCoins(serverCoins); saveCoins(serverCoins)
       setTotalScore(serverXp)
       setLevel(Math.floor(serverXp / 120) + 1)
     }
@@ -689,18 +697,20 @@ function App() {
     if (UNITS_FALLBACK.length === 1) setSelectedUnit(UNITS_FALLBACK[0])
   }, [])
 
-  // Debounced sync to server on score change
+  // Debounced sync to server on coins/score change
   useEffect(() => {
     if (!pbUser) return
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
     syncTimerRef.current = setTimeout(() => {
-      syncToServer(pbUser, pbUser.coins, totalScore, Math.floor(totalScore / 120) + 1)
+      syncToServer(pbUser, coins, totalScore, Math.floor(totalScore / 120) + 1)
     }, 3000)
-  }, [totalScore, pbUser])
+  }, [coins, totalScore, pbUser])
 
   const handleLogin = (user: PbUser) => {
     setPbUser(user)
+    const serverCoins = user.coins ?? 0
     const serverXp = user.xp ?? 0
+    setCoins(serverCoins); saveCoins(serverCoins)
     setTotalScore(serverXp)
     setLevel(Math.floor(serverXp / 120) + 1)
     // Dynamische Einheiten von PocketBase laden
@@ -749,7 +759,9 @@ function App() {
   )
   if (!selectedUnit) return <UnitPicker units={units} onSelect={handleSelectUnit} />
 
-  const addScore = (pts: number, gameMode?: View) => {
+  // addCoins: verdient Münzen + erhöht XP für Level-Progression
+  const addCoins = (pts: number, gameMode?: View) => {
+    setCoins(prev => { const n = Math.max(0, prev + pts); saveCoins(n); return n })
     setTotalScore(prev => {
       const next = prev + pts
       const newLvl = Math.floor(next / 120) + 1
@@ -769,7 +781,7 @@ function App() {
         game_mode: gameMode ?? view,
         score: pts,
         total: pts,
-        coins_earned: 0,
+        coins_earned: pts,
       })
     }
   }
@@ -781,13 +793,13 @@ function App() {
       <div className="app">
         {levelUp && <div className="level-up-toast">🎉 Level {level}!</div>}
         <div className="top-bar">
-          <span className="top-score">⭐ {totalScore}</span>
+          <span className="top-score">🪙 {coins}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
-        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
-        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
-        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} onScore={addScore} onBack={goMenu} />}
+        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
+        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
+        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
+        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
       </div>
     )
   }
@@ -800,7 +812,7 @@ function App() {
         <h1 className="hero-title">Vocab<span className="hero-accent">Hero</span></h1>
         <p className="hero-sub">{selectedUnit.emoji} {selectedUnit.title} · {selectedUnit.subtitle}</p>
         <div className="hero-stats">
-          <div className="stat-pill">⭐ {totalScore} Punkte</div>
+          <div className="stat-pill">🪙 {coins} Münzen</div>
           <div className="stat-pill pill-level">Level {level}</div>
         </div>
         <div className="xp-track">
