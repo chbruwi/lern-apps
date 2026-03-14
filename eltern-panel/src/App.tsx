@@ -721,7 +721,7 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
           <p>Noch keine Wörter. Füge sie einzeln hinzu oder nutze den Bulk-Import.</p>
         </div>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap word-table-wrap">
           <table className="word-table">
             <thead>
               <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th></th></tr>
@@ -820,7 +820,7 @@ function BulkImport({ token, unit, onBack }: {
             {preview.length === 0 ? (
               <p className="error-msg">Keine gültigen Einträge gefunden. Prüfe das Format.</p>
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap word-table-wrap">
                 <table className="word-table">
                   <thead><tr><th>Englisch</th><th>Deutsch</th><th>Typ</th></tr></thead>
                   <tbody>
@@ -1190,7 +1190,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
             <h4>📝 {words.length} Wörter erkannt</h4>
             <button type="button" className="btn-sm" onClick={addWord}>+ Wort</button>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap word-table-wrap">
             <table className="word-table">
               <thead><tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th></th></tr></thead>
               <tbody>

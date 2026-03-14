@@ -381,6 +381,7 @@ function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
 
   const handleAnswer = (ans: string) => {
     if (feedback) return
+    ;(document.activeElement as HTMLElement)?.blur()
     if (timerRef.current) clearInterval(timerRef.current)
     if (ans === correctAnswer) {
       setFeedback('correct')
@@ -726,11 +727,14 @@ function App() {
       fetchVocabUnits(saved.token, UNITS_FALLBACK.map(u => ({ id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, targetUser: '' }))).then(pbUnits => {
         const loaded = pbUnits.map(pbUnitToUnit)
         setUnits(loaded)
-        if (loaded.length === 1) setSelectedUnit(loaded[0])
+        if (loaded.length === 1) {
+          fetchVocabItems(saved.token, loaded[0].id).then(items => {
+            setSelectedUnit({ ...loaded[0], vocab: items })
+          }).catch(() => setSelectedUnit(loaded[0]))
+        }
         // Bei mehreren Units: UnitPicker erscheint (selectedUnit bleibt null)
       }).catch(() => {
-        // PB nicht erreichbar: Fallback auto-select
-        if (UNITS_FALLBACK.length === 1) setSelectedUnit(UNITS_FALLBACK[0])
+        // PB nicht erreichbar: kein Auto-Select → UnitPicker zeigt Fallback
       })
     }
     // Kein savedAuth → LoginScreen wird angezeigt (kein Auto-Select nötig)
@@ -756,7 +760,11 @@ function App() {
     fetchVocabUnits(user.token, UNITS_FALLBACK.map(u => ({ id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, targetUser: '' }))).then(pbUnits => {
       const loaded = pbUnits.map(pbUnitToUnit)
       setUnits(loaded)
-      if (loaded.length === 1) setSelectedUnit(loaded[0])
+      if (loaded.length === 1) {
+        fetchVocabItems(user.token, loaded[0].id).then(items => {
+          setSelectedUnit({ ...loaded[0], vocab: items })
+        }).catch(() => setSelectedUnit(loaded[0]))
+      }
     })
   }
 
@@ -787,7 +795,7 @@ function App() {
     setTotalScore(0)
     setLevel(1)
     setUnits(UNITS_FALLBACK)
-    setSelectedUnit(UNITS_FALLBACK.length === 1 ? UNITS_FALLBACK[0] : null)
+    setSelectedUnit(null)
   }
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />

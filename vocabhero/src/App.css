@@ -201,7 +201,10 @@ body {
   background: var(--bg2); cursor: pointer; font-family: 'Outfit', sans-serif;
   font-size: 0.95rem; font-weight: 500; transition: all 0.2s; color: var(--text);
 }
-.quiz-opt:hover:not(:disabled) { border-color: var(--purple); background: #faf5ff; transform: translateY(-1px); }
+@media (hover: hover) {
+  .quiz-opt:hover:not(:disabled) { border-color: var(--purple); background: #faf5ff; transform: translateY(-1px); }
+}
+.quiz-opt:focus { outline: none; }
 .quiz-opt:disabled { cursor: default; }
 .opt-correct { border-color: var(--green) !important; background: #f0fdf4 !important; color: #166534 !important; font-weight: 700; }
 .opt-faded { opacity: 0.4; }

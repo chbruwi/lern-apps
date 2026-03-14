@@ -357,6 +357,30 @@ body {
   /* Wizard steps: compress labels */
   .step-label { font-size: 0.78rem }
   .wizard-step { padding: 8px 10px; gap: 6px }
+
+  /* Word table → stacked cards on mobile */
+  .word-table-wrap { overflow-x: unset }
+  .word-table thead { display: none }
+  .word-table tbody tr {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 10px; margin-bottom: 8px;
+    background: var(--bg2); border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .word-table tbody tr:last-child { margin-bottom: 0 }
+  .word-table td {
+    padding: 0; border-bottom: none;
+    background: none;
+  }
+  /* Source lang + German: full width */
+  .word-table td:nth-child(1),
+  .word-table td:nth-child(2) { flex: 1 1 100% }
+  .word-table td:nth-child(1) .field,
+  .word-table td:nth-child(2) .field { width: 100%; box-sizing: border-box }
+  /* Typ + Delete: side by side */
+  .word-table td:nth-child(3) { flex: 1 }
+  .word-table td:nth-child(4) { flex: 0 0 auto }
+  .word-table td:nth-child(3) select { width: 100%; box-sizing: border-box }
 }
 
 /* ── Modal ─────────────────────────────────────────────────────────────── */
