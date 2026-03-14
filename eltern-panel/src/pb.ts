@@ -338,6 +338,19 @@ export async function deleteVocabItem(token: string, id: string): Promise<void> 
   if (!res.ok) throw new Error('Löschen fehlgeschlagen')
 }
 
+export async function updateVocabItem(
+  token: string,
+  id: string,
+  d: { en: string; de: string; type: 'word' | 'phrase' }
+): Promise<void> {
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(d),
+  })
+  if (!res.ok) throw new Error('Speichern fehlgeschlagen')
+}
+
 export async function bulkImportVocab(token: string, unitId: string, rawText: string): Promise<VocabItem[]> {
   const lines = rawText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
   const parsed: { en: string; de: string; type: 'word' | 'phrase' }[] = []

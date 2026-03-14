@@ -5,7 +5,7 @@ import {
   fetchChildren, fetchActivityLog,
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
-  fetchVocabItems, createVocabItem, deleteVocabItem,
+  fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
   createVocabItemWithImage, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
 } from './pb'
@@ -611,6 +611,18 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
     } catch { alert('Löschen fehlgeschlagen') }
   }
 
+  async function handleUpdateItem(id: string, field: 'en' | 'de' | 'type', value: string) {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
+  }
+
+  async function handleSaveItem(id: string) {
+    const item = items.find(i => i.id === id)
+    if (!item) return
+    try {
+      await updateVocabItem(token, id, { en: item.en, de: item.de, type: item.type as 'word' | 'phrase' })
+    } catch { alert('Speichern fehlgeschlagen') }
+  }
+
   async function handleSaveInfo(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -729,9 +741,23 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
             <tbody>
               {items.map(item => (
                 <tr key={item.id}>
-                  <td>{item.en}</td>
-                  <td>{item.de}</td>
-                  <td><span className={`tag ${item.type === 'phrase' ? 'tag-purple' : ''}`}>{item.type}</span></td>
+                  <td><input className="field field-inline" value={item.en}
+                    onChange={e => handleUpdateItem(item.id, 'en', e.target.value)}
+                    onBlur={() => handleSaveItem(item.id)} /></td>
+                  <td><input className="field field-inline" value={item.de}
+                    onChange={e => handleUpdateItem(item.id, 'de', e.target.value)}
+                    onBlur={() => handleSaveItem(item.id)} /></td>
+                  <td>
+                    <select className="field-sm" value={item.type}
+                      onChange={e => {
+                        const v = e.target.value as 'word' | 'phrase'
+                        handleUpdateItem(item.id, 'type', v)
+                        updateVocabItem(token, item.id, { en: item.en, de: item.de, type: v }).catch(() => alert('Speichern fehlgeschlagen'))
+                      }}>
+                      <option value="word">Wort</option>
+                      <option value="phrase">Satz</option>
+                    </select>
+                  </td>
                   <td>
                     <button className="btn-sm btn-danger" onClick={() => handleDeleteItem(item.id)}>✕</button>
                   </td>
