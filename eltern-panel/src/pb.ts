@@ -11,6 +11,7 @@ export interface Parent {
   email: string
   name: string
   token: string
+  geminiKey: string  // gespeichert in PocketBase parents.gemini_key
 }
 
 export interface Child {
@@ -81,6 +82,7 @@ export async function parentLogin(email: string, password: string): Promise<Pare
     email: data.record.email,
     name: data.record.name ?? email.split('@')[0],
     token: data.token,
+    geminiKey: data.record.gemini_key ?? '',
   }
   try { localStorage.setItem(PARENT_KEY, JSON.stringify(parent)) } catch {}
   return parent
@@ -95,6 +97,16 @@ export function getParentAuth(): Parent | null {
 
 export function parentLogout(): void {
   try { localStorage.removeItem(PARENT_KEY) } catch {}
+}
+
+export async function saveGeminiKeyToPb(token: string, id: string, key: string): Promise<void> {
+  try {
+    await fetch(`${PB_URL}/api/collections/parents/records/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ gemini_key: key }),
+    })
+  } catch { /* silent – key bleibt zumindest im localStorage */ }
 }
 
 // ─── Children ─────────────────────────────────────────────────────────────────

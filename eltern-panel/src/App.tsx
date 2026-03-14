@@ -7,6 +7,7 @@ import {
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, deleteVocabItem,
   createVocabItemWithImage, bulkImportVocab, parseBulkText,
+  saveGeminiKeyToPb,
 } from './pb'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -930,13 +931,15 @@ async function generateVocabImage(apiKey: string, en: string, de: string): Promi
 
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({ parent, onClose }: { parent: Parent; onClose: () => void }) {
   const [key, setKey] = useState(getGeminiKey)
   const [saved, setSaved] = useState(false)
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    saveGeminiKey(key.trim())
+    const trimmed = key.trim()
+    saveGeminiKey(trimmed)
+    saveGeminiKeyToPb(parent.token, parent.id, trimmed)  // sync to PocketBase
     setSaved(true)
     setTimeout(onClose, 800)
   }
@@ -954,7 +957,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             <input className="field" type="password" placeholder="AIza..."
               value={key} onChange={e => setKey(e.target.value)} autoComplete="off" />
             <span className="field-hint">
-              Holen unter <a href="https://aistudio.google.com" target="_blank" rel="noopener">aistudio.google.com</a> → "Get API key". Wird nur lokal gespeichert.
+              Holen unter <a href="https://aistudio.google.com" target="_blank" rel="noopener">aistudio.google.com</a> → "Get API key". Wird geräteübergreifend gespeichert.
             </span>
           </div>
           {saved && <p className="success-msg">✅ Gespeichert!</p>}
@@ -1294,6 +1297,11 @@ export default function App() {
 
   function handleLogin(p: Parent) {
     setParent(p)
+    // Sync gemini key from PocketBase to localStorage (works across devices)
+    if (p.geminiKey) {
+      saveGeminiKey(p.geminiKey)
+      setGeminiKeyState(p.geminiKey)
+    }
     setScreen('dashboard')
   }
 
@@ -1319,7 +1327,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {showSettings && <SettingsModal onClose={handleSettingsClose} />}
+      {showSettings && <SettingsModal parent={parent} onClose={handleSettingsClose} />}
       <NavBar
         screen={screen}
         onNav={navTo}
