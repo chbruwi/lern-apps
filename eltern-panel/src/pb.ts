@@ -99,6 +99,17 @@ export function parentLogout(): void {
   try { localStorage.removeItem(PARENT_KEY) } catch {}
 }
 
+export async function fetchParentGeminiKey(token: string, id: string): Promise<string> {
+  try {
+    const res = await fetch(`${PB_URL}/api/collections/parents/records/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return ''
+    const data = await res.json()
+    return data.gemini_key ?? ''
+  } catch { return '' }
+}
+
 export async function saveGeminiKeyToPb(token: string, id: string, key: string): Promise<void> {
   try {
     await fetch(`${PB_URL}/api/collections/parents/records/${id}`, {

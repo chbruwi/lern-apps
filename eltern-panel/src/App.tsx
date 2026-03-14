@@ -7,7 +7,7 @@ import {
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, deleteVocabItem,
   createVocabItemWithImage, bulkImportVocab, parseBulkText,
-  saveGeminiKeyToPb,
+  saveGeminiKeyToPb, fetchParentGeminiKey,
 } from './pb'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1294,6 +1294,15 @@ export default function App() {
   const [bulkVocabUnit, setBulkVocabUnit] = useState<VocabUnit | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [geminiKey, setGeminiKeyState] = useState(getGeminiKey)
+
+  // On mount: if already logged in but key missing locally, fetch from PocketBase
+  useEffect(() => {
+    if (parent && !getGeminiKey()) {
+      fetchParentGeminiKey(parent.token, parent.id).then(key => {
+        if (key) { saveGeminiKey(key); setGeminiKeyState(key) }
+      })
+    }
+  }, [])
 
   function handleLogin(p: Parent) {
     setParent(p)
