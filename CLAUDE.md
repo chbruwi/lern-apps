@@ -151,9 +151,10 @@ git push
   - Einmaleins-Reihen: Pill-Grid `1×` bis `10×` (nur bei Mal/Geteilt aktiv)
   - Max-Zahl, Aktiv-Toggle
 - **Vokabel-Einheiten** verwalten: Erstellen, Bearbeiten, Löschen
-  - Wörter-Tabelle (EN | DE | Typ | Löschen)
+  - Wörter-Tabelle inline editierbar (EN | DE | Typ | Löschen) — auto-save on blur
   - Wort einzeln hinzufügen
   - **Bulk-Import:** Paste-Textarea → Preview → Import
+  - **Sprache** wählbar pro Unit: 🇬🇧 Englisch / 🇫🇷 Französisch / 🇪🇸 Spanisch / 🇮🇹 Italienisch
 
 **Bulk-Import Format:**
 ```
@@ -170,8 +171,15 @@ Parser: Split bei `=`, `[phrase]`-Suffix erkannt → Preview → sequenziell imp
   - Prompt: `"Children's educational flashcard illustration: "${en}" (German: ${de}). Square 1:1 format. Simple, colorful, clear depiction, cartoon style, no text, white background."`
   - Bilder werden als `Blob` im State gehalten, Upload via `FormData` (multipart)
   - Fehlschlagende Bilder werden ohne Bild gespeichert (Fallback)
-  - Gemini API Key: localStorage `lernheld-gemini-key`, einstellbar via ⚙️ oben rechts
+  - Gemini API Key: localStorage `lernheld-gemini-key` + PocketBase `parents.gemini_key` (geräteübergreifend sync)
+  - Key-Sync: beim Speichern → PB; beim Login + App-Start → PB→localStorage
   - Version: unten rechts sichtbar (aktuell v1.5), bei jedem Deploy erhöhen
+
+**Mobile-Optimierungen:**
+- Upload-Zone mit direkter Kamera-Capture (`capture="environment"`) + separater Galerie-Button
+- Wörter-Tabelle auf Mobile: gestapelte Cards statt Tabelle (`.word-table-wrap` CSS-Klasse)
+- Log-Tabelle: App + Modus-Spalten auf Mobile ausgeblendet (`.td-hide-mobile`)
+- Navbar kompakt auf Mobile (Logo als Emoji, verkürzte Button-Labels)
 
 **Gemini API (Browser-seitig, kein CORS-Problem):**
 ```typescript
@@ -217,6 +225,11 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-im
 - **UnitPicker:** Auswahl der Vokabel-Einheit (gefiltert nach `target_user`)
   - Auto-Select wenn genau 1 Unit vorhanden, sonst Auswahl-Screen
   - Funktioniert sowohl nach manuellem Login als auch bei savedAuth (Auto-Login)
+- **Mehrsprachigkeit:** Jede Unit trägt ein `language`-Feld (`"en"`, `"fr"`, `"es"`, `"it"`)
+  - Spielmodi-Labels dynamisch: `getLangLabel(lang).code` statt hardcodiert `"EN"`
+  - Footer: `"Französisch ↔ Deutsch"` statt hardcodiert `"Englisch ↔ Deutsch"`
+  - `LANG_LABELS`-Map und `getLangLabel()` Helper in App.tsx
+  - Französische Vokabeln gehen in das `en`-Feld von `vocab_items` (semantisch: Quellsprache)
 - **4 Spielmodi:**
   - 🃏 **Karteikarten** — Flip-Karte mit Bild auf **beiden Seiten** (EN + DE), dann Gewusst/Nochmal
   - 🔗 **Match-It** — 6 Paare zuordnen; linke Seite zeigt Bild + Text wenn EN, rechts nur Text
@@ -227,21 +240,16 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-im
 - Stale-While-Revalidate: Units gecacht in localStorage (`lernheld-vocab-units-v1`)
 - **Bild-Integration:** `VocabItem.imageUrl` kommt aus PocketBase File-URL; Karten ohne Bild funktionieren text-only
 
-**UnitPicker savedAuth-Logik (wichtig!):**
+**Auto-Select Logik mit Bild-Laden (wichtig!):**
 ```typescript
-// Im useEffect (mount): savedAuth → fetchVocabUnits → setUnits
-// NICHT auto-select aus UNITS_FALLBACK – das würde UnitPicker überspringen
-useEffect(() => {
-  const saved = getSavedAuth()
-  if (saved) {
-    setPbUser(saved)
-    fetchVocabUnits(saved.token, fallback).then(pbUnits => {
-      const loaded = pbUnits.map(pbUnitToUnit)
-      setUnits(loaded)
-      if (loaded.length === 1) setSelectedUnit(loaded[0])  // nur bei 1 Unit auto-select
-    })
-  }
-}, [])
+// Bei 1 Unit: fetchVocabItems MUSS aufgerufen werden, sonst vocab=[] und Bilder fehlen!
+if (loaded.length === 1) {
+  fetchVocabItems(token, loaded[0].id).then(items => {
+    setSelectedUnit({ ...loaded[0], vocab: items })
+  }).catch(() => setSelectedUnit(loaded[0]))
+}
+// handleLogout: setSelectedUnit(null) — NICHT UNITS_FALLBACK[0]!
+// Sonst wird beim Re-Login UnitPicker übersprungen und vocab bleibt leer.
 ```
 
 **CSS-Besonderheit Karteikarten:**
@@ -368,6 +376,7 @@ services:
 | email | email (built-in) | Login-Identität |
 | name | text | z.B. „Christian" |
 | password | password (built-in) | |
+| gemini_key | text | Gemini API Key (geräteübergreifend gespeichert) |
 
 **API-Regeln:**
 - List/View: `@request.auth.id = id`
@@ -412,6 +421,7 @@ services:
 | subtitle | text | „Accidents & First Aid" |
 | emoji | text | „🏥" |
 | target_user | text | `""` = alle, `"fiona"` = nur Fiona |
+| language | text | `"en"` / `"fr"` / `"es"` / `"it"` — default: `"en"` |
 | active | bool | default: true |
 | sort_order | number | default: 0 |
 
@@ -542,13 +552,20 @@ deleteVocabUnit(token, id)
 // Vocab Items CRUD + Bulk Import + Image Upload
 fetchVocabItems(token, unitId)
 createVocabItem(token, data)
+updateVocabItem(token, id, { en, de, type })  // PATCH – inline editing
 createVocabItemWithImage(token, unitId, en, de, type, imageBlob | null)
   // → FormData (multipart), kein Content-Type Header setzen!
   // → imageBlob = null → speichert ohne Bild
 deleteVocabItem(token, id)
 bulkImportVocab(token, unitId, rawText)  // parst "word = Wort [phrase]"-Format
 parseBulkText(rawText)                    // Parser ohne Import (für Preview)
+
+// Gemini Key Sync
+saveGeminiKeyToPb(token, id, key)     // PATCH parents.gemini_key
+fetchParentGeminiKey(token, id)       // GET parents.gemini_key → string
 ```
+
+**`Parent` Interface** enthält `geminiKey: string` — wird beim Login aus PB geladen und in localStorage `lernheld-gemini-key` gespiegelt.
 
 ---
 
@@ -642,7 +659,27 @@ curl -s -X POST URL -H 'Content-Type: application/json' -d @/tmp/auth.json
 { "type": "relation", "name": "unit", "options": { "collectionId": "ID" } }
 ```
 
-### 5. UnitPicker Auto-Select Logik
+### 5. VocabHero Auto-Select: immer fetchVocabItems aufrufen
+Bei Auto-Select (1 Unit) MUSS `fetchVocabItems` aufgerufen werden. Sonst hat die Unit `vocab=[]` → Bilder fehlen, Spiele sind leer.
+```typescript
+// RICHTIG:
+if (loaded.length === 1) {
+  fetchVocabItems(token, loaded[0].id).then(items =>
+    setSelectedUnit({ ...loaded[0], vocab: items })
+  )
+}
+// FALSCH: setSelectedUnit(loaded[0])  ← vocab bleibt []
+```
+Gilt für `handleLogin` UND den mount-`useEffect`.
+`handleLogout` setzt `setSelectedUnit(null)` — NICHT `UNITS_FALLBACK[0]`.
+
+### 6. Speed-Quiz: Hover-Stuck auf Mobile
+Mobile Browser (iOS/Android) behalten `:hover`-Zustand nach Tap. Fixes:
+- `@media (hover: hover)` um alle `:hover`-Stile wrappen → wirkt nur bei echter Maus
+- `(document.activeElement as HTMLElement)?.blur()` in `handleAnswer` aufrufen
+- `.quiz-opt:focus { outline: none }` im CSS
+
+### 7. UnitPicker Auto-Select Logik
 Wenn nur 1 Einheit vorhanden → direkt in den Spielmodus.
 Wenn mehrere Einheiten → UnitPicker zeigen. **Wichtig:** `selectedUnit` initial auf `null` setzen, nicht auf `FALLBACK[0]`.
 
