@@ -19,17 +19,29 @@ interface Unit {
   title: string
   subtitle: string
   emoji: string
+  language: string    // z.B. "en", "fr", "es" — default "en"
   vocab: VocabItem[]  // leer wenn noch nicht geladen
   itemCount?: number  // Hinweis-Anzahl von PocketBase
 }
 
+const LANG_LABELS: Record<string, { code: string; name: string }> = {
+  en: { code: 'EN', name: 'Englisch' },
+  fr: { code: 'FR', name: 'Französisch' },
+  es: { code: 'ES', name: 'Spanisch' },
+  it: { code: 'IT', name: 'Italienisch' },
+}
+function getLangLabel(lang: string) {
+  return LANG_LABELS[lang.toLowerCase()] ?? { code: lang.toUpperCase(), name: lang.toUpperCase() }
+}
+
 function pbUnitToUnit(u: VocabUnit): Unit {
-  return { id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, vocab: [], itemCount: u.itemCount }
+  return { id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, language: u.language ?? 'en', vocab: [], itemCount: u.itemCount }
 }
 
 const UNITS_FALLBACK: Unit[] = [
   {
     id: 'unit3',
+    language: 'en',
     title: 'Unit 3',
     subtitle: 'Accidents & First Aid',
     emoji: '🏥',
@@ -110,7 +122,7 @@ function Confetti({ active }: { active: boolean }) {
 // MODULE 1: FLIP CARDS
 // ============================================================
 
-function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
+function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
   const [cards, setCards] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -162,7 +174,8 @@ function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
   const card = cards[idx]
   const front = showEn ? card.en : card.de
   const back = showEn ? card.de : card.en
-  const lang = showEn ? 'EN' : 'DE'
+  const langCode = getLangLabel(lang).code
+  const frontLang = showEn ? langCode : 'DE'
 
   return (
     <div className="module">
@@ -172,15 +185,19 @@ function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
       <div className="flip-scene" onClick={() => setFlipped(!flipped)}>
         <div className={`flip-card ${flipped ? 'is-flipped' : ''}`}>
           <div className="flip-face flip-front">
-            <span className="flip-lang">{lang}</span>
-            {showEn && card.imageUrl && (
+            <span className="flip-lang">{frontLang}</span>
+            {card.imageUrl && (
               <img src={card.imageUrl} alt={card.en}
-                style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
+                style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
             )}
             <span className="flip-text">{front}</span>
           </div>
           <div className="flip-face flip-back">
-            <span className="flip-lang">{showEn ? 'DE' : 'EN'}</span>
+            <span className="flip-lang">{showEn ? 'DE' : langCode}</span>
+            {card.imageUrl && (
+              <img src={card.imageUrl} alt={card.en}
+                style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
+            )}
             <span className="flip-text">{back}</span>
           </div>
         </div>
@@ -206,9 +223,9 @@ function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
 // MODULE 2: MATCH-IT
 // ============================================================
 
-function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
+function MatchIt({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
   const [pairs, setPairs] = useState<VocabItem[]>([])
-  const [leftItems, setLeftItems] = useState<{ id: number; text: string }[]>([])
+  const [leftItems, setLeftItems] = useState<{ id: number; text: string; imageUrl?: string }[]>([])
   const [rightItems, setRightItems] = useState<{ id: number; text: string }[]>([])
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
   const [matched, setMatched] = useState<number[]>([])
@@ -219,7 +236,7 @@ function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: 
     const chosen = pickRandom(vocab, 6)
     setPairs(chosen)
     const showEnLeft = Math.random() > 0.5
-    setLeftItems(shuffle(chosen.map((v, i) => ({ id: i, text: showEnLeft ? v.en : v.de }))))
+    setLeftItems(shuffle(chosen.map((v, i) => ({ id: i, text: showEnLeft ? v.en : v.de, imageUrl: showEnLeft ? v.imageUrl : undefined }))))
     setRightItems(shuffle(chosen.map((v, i) => ({ id: i, text: showEnLeft ? v.de : v.en }))))
     setSelectedLeft(null)
     setMatched([])
@@ -277,6 +294,7 @@ function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: 
                 onClick={() => handleLeft(item.id)}
                 disabled={matched.includes(item.id)}
               >
+                {item.imageUrl && <img src={item.imageUrl} alt={item.text} style={{ width: '100%', maxHeight: 60, objectFit: 'contain', borderRadius: 4, marginBottom: 4, display: 'block' }} />}
                 {item.text}
               </button>
             ))}
@@ -303,7 +321,7 @@ function MatchIt({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: 
 // MODULE 3: SPEED QUIZ
 // ============================================================
 
-function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
+function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [options, setOptions] = useState<string[]>([])
@@ -411,7 +429,11 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
       <div className="timer-text">{timer}s</div>
 
       <div className={`quiz-question ${feedback === 'correct' ? 'q-correct' : feedback === 'wrong' ? 'q-wrong' : ''}`}>
-        <span className="quiz-lang">{showEn ? 'EN' : 'DE'}</span>
+        <span className="quiz-lang">{showEn ? getLangLabel(lang).code : 'DE'}</span>
+        {q.imageUrl && (
+          <img src={q.imageUrl} alt={q.en}
+            style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, marginBottom: 4 }} />
+        )}
         <span className="quiz-word">{questionText}</span>
       </div>
 
@@ -437,7 +459,7 @@ function SpeedQuiz({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
 // MODULE 4: BUCHSTABEN-SALAT
 // ============================================================
 
-function BuchstabenSalat({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void }) {
+function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [showEn, setShowEn] = useState(true)
@@ -545,7 +567,11 @@ function BuchstabenSalat({ vocab, onScore, onBack }: { vocab: VocabItem[]; onSco
       <p className="hint">Bringe die Buchstaben in die richtige Reihenfolge!</p>
 
       <div className="scramble-clue">
-        <span className="scramble-lang">{showEn ? 'DE' : 'EN'}</span>
+        <span className="scramble-lang">{showEn ? 'DE' : getLangLabel(lang).code}</span>
+        {showEn && q.imageUrl && (
+          <img src={q.imageUrl} alt={q.en}
+            style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 8, margin: '6px 0' }} />
+        )}
         <span className="scramble-word">{clue}</span>
       </div>
 
@@ -696,9 +722,18 @@ function App() {
       setCoins(serverCoins); saveCoins(serverCoins)
       setTotalScore(serverXp)
       setLevel(Math.floor(serverXp / 120) + 1)
+      // Units von PocketBase laden (gleich wie handleLogin)
+      fetchVocabUnits(saved.token, UNITS_FALLBACK.map(u => ({ id: u.id, title: u.title, subtitle: u.subtitle, emoji: u.emoji, targetUser: '' }))).then(pbUnits => {
+        const loaded = pbUnits.map(pbUnitToUnit)
+        setUnits(loaded)
+        if (loaded.length === 1) setSelectedUnit(loaded[0])
+        // Bei mehreren Units: UnitPicker erscheint (selectedUnit bleibt null)
+      }).catch(() => {
+        // PB nicht erreichbar: Fallback auto-select
+        if (UNITS_FALLBACK.length === 1) setSelectedUnit(UNITS_FALLBACK[0])
+      })
     }
-    // Auto-select if only one fallback unit
-    if (UNITS_FALLBACK.length === 1) setSelectedUnit(UNITS_FALLBACK[0])
+    // Kein savedAuth → LoginScreen wird angezeigt (kein Auto-Select nötig)
   }, [])
 
   // Debounced sync to server on coins/score change
@@ -800,10 +835,10 @@ function App() {
           <span className="top-score">🪙 {coins}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
-        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
-        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
-        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} />}
+        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
       </div>
     )
   }
@@ -840,7 +875,7 @@ function App() {
         ))}
       </div>
 
-      <p className="footer-text">{selectedUnit.vocab.length} Vokabeln · Englisch ↔ Deutsch</p>
+      <p className="footer-text">{selectedUnit.vocab.length} Vokabeln · {getLangLabel(selectedUnit.language).name} ↔ Deutsch</p>
       <div className="footer-links">
         {units.length > 1 && (
           <button className="unit-switch-btn" onClick={() => setSelectedUnit(null)}>📚 Unit wechseln</button>

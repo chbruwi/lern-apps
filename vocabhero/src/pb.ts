@@ -76,6 +76,7 @@ export interface VocabUnit {
   subtitle: string
   emoji: string
   targetUser: string
+  language: string   // z.B. "en", "fr", "es" — default "en"
   itemCount?: number
 }
 
@@ -95,6 +96,7 @@ export async function fetchVocabUnits(token: string, fallback: VocabUnit[]): Pro
       subtitle: r.subtitle ?? '',
       emoji: r.emoji ?? '📚',
       targetUser: r.target_user ?? '',
+      language: r.language ?? 'en',
     }))
     if (units.length === 0) throw new Error('empty')
     localStorage.setItem(CACHE_KEY_VOCAB, JSON.stringify(units))

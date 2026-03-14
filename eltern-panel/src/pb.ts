@@ -39,6 +39,7 @@ export interface VocabUnit {
   subtitle: string
   emoji: string
   targetUser: string
+  language: string   // z.B. "en", "fr", "es" — default "en"
   active: boolean
   sortOrder: number
   itemCount?: number
@@ -211,6 +212,7 @@ function mapVocabUnit(r: any): VocabUnit {
     subtitle: r.subtitle ?? '',
     emoji: r.emoji ?? '📚',
     targetUser: r.target_user ?? '',
+    language: r.language ?? 'en',
     active: r.active !== false,
     sortOrder: r.sort_order ?? 0,
     itemCount: r.itemCount,
@@ -244,7 +246,7 @@ export async function createVocabUnit(token: string, d: Omit<VocabUnit, 'id' | '
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       title: d.title, subtitle: d.subtitle, emoji: d.emoji,
-      target_user: d.targetUser, active: d.active, sort_order: d.sortOrder,
+      target_user: d.targetUser, language: d.language ?? 'en', active: d.active, sort_order: d.sortOrder,
     }),
   })
   if (!res.ok) throw new Error('Speichern fehlgeschlagen')
@@ -257,6 +259,7 @@ export async function updateVocabUnit(token: string, id: string, d: Partial<Voca
   if (d.subtitle !== undefined) body.subtitle = d.subtitle
   if (d.emoji !== undefined) body.emoji = d.emoji
   if (d.targetUser !== undefined) body.target_user = d.targetUser
+  if (d.language !== undefined) body.language = d.language
   if (d.active !== undefined) body.active = d.active
   if (d.sortOrder !== undefined) body.sort_order = d.sortOrder
   const res = await fetch(`${PB_URL}/api/collections/vocab_units/records/${id}`, {

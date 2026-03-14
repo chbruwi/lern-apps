@@ -115,7 +115,7 @@ body {
   perspective: 800px; cursor: pointer; margin: 0 auto 20px; max-width: 380px;
 }
 .flip-card {
-  width: 100%; aspect-ratio: 1.5; position: relative;
+  width: 100%; min-height: 360px; position: relative;
   transform-style: preserve-3d; transition: transform 0.55s ease;
 }
 .flip-card.is-flipped { transform: rotateY(180deg); }

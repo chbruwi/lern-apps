@@ -444,7 +444,7 @@ function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ title: '', subtitle: '', emoji: '📚', targetUser: '', active: true })
+  const [form, setForm] = useState({ title: '', subtitle: '', emoji: '📚', targetUser: '', language: 'en', active: true })
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(() => {
@@ -466,7 +466,7 @@ function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: 
     setSaving(true)
     try {
       await createVocabUnit(token, { ...form, sortOrder: units.length })
-      setShowForm(false); setForm({ title: '', subtitle: '', emoji: '📚', targetUser: '', active: true })
+      setShowForm(false); setForm({ title: '', subtitle: '', emoji: '📚', targetUser: '', language: 'en', active: true })
       load()
     } catch { alert('Erstellen fehlgeschlagen') }
     finally { setSaving(false) }
@@ -511,6 +511,16 @@ function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: 
                 <option value="">Alle Kinder</option>
                 <option value="andrin">Nur Andrin</option>
                 <option value="fiona">Nur Fiona</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Sprache</label>
+              <select className="field" value={form.language}
+                onChange={e => setForm(f => ({ ...f, language: e.target.value }))}>
+                <option value="en">🇬🇧 Englisch</option>
+                <option value="fr">🇫🇷 Französisch</option>
+                <option value="es">🇪🇸 Spanisch</option>
+                <option value="it">🇮🇹 Italienisch</option>
               </select>
             </div>
             <div className="form-group">
@@ -572,7 +582,7 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
   const [saving, setSaving] = useState(false)
   const [newItem, setNewItem] = useState({ en: '', de: '', type: 'word' as 'word' | 'phrase' })
   const [editInfo, setEditInfo] = useState(false)
-  const [infoForm, setInfoForm] = useState({ title: unit.title, subtitle: unit.subtitle, emoji: unit.emoji, targetUser: unit.targetUser, active: unit.active })
+  const [infoForm, setInfoForm] = useState({ title: unit.title, subtitle: unit.subtitle, emoji: unit.emoji, targetUser: unit.targetUser, language: unit.language ?? 'en', active: unit.active })
 
   const load = useCallback(() => {
     setLoading(true)
@@ -646,6 +656,16 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
                 <option value="">Alle Kinder</option>
                 <option value="andrin">Nur Andrin</option>
                 <option value="fiona">Nur Fiona</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Sprache</label>
+              <select className="field" value={infoForm.language}
+                onChange={e => setInfoForm(f => ({ ...f, language: e.target.value }))}>
+                <option value="en">🇬🇧 Englisch</option>
+                <option value="fr">🇫🇷 Französisch</option>
+                <option value="es">🇪🇸 Spanisch</option>
+                <option value="it">🇮🇹 Italienisch</option>
               </select>
             </div>
             <div className="form-group">
@@ -820,9 +840,10 @@ function BulkImport({ token, unit, onBack }: {
   )
 }
 
-// ─── Gemini API Helpers ───────────────────────────────────────────────────────
+// ─── API Key Storage ──────────────────────────────────────────────────────────
 
 const GEMINI_KEY_SK = 'lernheld-gemini-key'
+
 export function getGeminiKey(): string {
   try { return localStorage.getItem(GEMINI_KEY_SK) || '' } catch { return '' }
 }
@@ -837,51 +858,74 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   return new Blob([arr], { type: mimeType })
 }
 
+// ─── OCR via Gemini Vision ────────────────────────────────────────────────────
+
 async function ocrVocabFromPhoto(apiKey: string, imageBase64: string): Promise<{ en: string; de: string }[]> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
           parts: [
-            { text: 'This image shows a vocabulary list. Extract all word/phrase pairs. Return ONLY a JSON array like: [{"en":"word","de":"Übersetzung"}]. English on left, German translation on right. No markdown, no explanation — only the raw JSON array.' },
+            { text: 'This image shows a vocabulary list. Extract all word/phrase pairs. Return ONLY a JSON array like: [{"en":"word","de":"Übersetzung","type":"word"}]. Use type "phrase" for full sentences and multi-word phrases (e.g. "Play fair!", "We won the match."), use type "word" for single words and "to + verb" patterns. English on left, German on right. No markdown, no explanation — only the raw JSON array.' },
             { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }
           ]
         }]
       })
     }
   )
-  if (!res.ok) throw new Error(`Gemini Fehler (${res.status})`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`OCR Fehler (${res.status}): ${err?.error?.message ?? ''}`)
+  }
   const data = await res.json()
   const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   const match = text.match(/\[[\s\S]*\]/)
   if (!match) throw new Error('Keine Wörter erkannt – bitte manuell eingeben')
-  return JSON.parse(match[0])
+  const raw = JSON.parse(match[0])
+  return raw.map((item: any) => {
+    const en: string = item.en ?? item.english ?? item.English ?? item.word ?? item.term ?? item.source ?? ''
+    const de: string = item.de ?? item.german ?? item.German ?? item.deutsch ?? item.Deutsch ?? item.translation ?? item.Translation ?? item.target ?? ''
+    const detectedType: 'word' | 'phrase' = item.type === 'phrase' ? 'phrase'
+      : /[.!?]$/.test(en.trim()) || en.trim().split(/\s+/).length > 3 ? 'phrase'
+      : 'word'
+    return { en, de, type: detectedType }
+  }).filter((item: any) => item.en || item.de)
 }
 
-async function generateVocabImage(apiKey: string, en: string, de: string): Promise<Blob | null> {
+// ─── Image Generation via Gemini Imagen ───────────────────────────────────────
+
+async function generateVocabImage(apiKey: string, en: string, de: string): Promise<{ blob: Blob | null; error: string | null }> {
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instances: [{
-            prompt: `Children's educational flashcard illustration: "${en}" (German: ${de}). Simple, colorful, clear depiction of the concept, cartoon style, no text, white background.`
+          contents: [{
+            parts: [{ text: `Children's educational flashcard illustration: "${en}" (German: ${de}). Square 1:1 format. Simple, colorful, clear depiction of the concept, cartoon style, no text, white background.` }]
           }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' }
+          generationConfig: { responseModalities: ['IMAGE'] }
         })
       }
     )
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      const msg = errData?.error?.message ?? `HTTP ${res.status}`
+      return { blob: null, error: msg }
+    }
     const data = await res.json()
-    const b64: string | undefined = data.predictions?.[0]?.bytesBase64Encoded
-    if (!b64) return null
-    return base64ToBlob(b64, 'image/png')
-  } catch { return null }
+    const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)
+    const b64: string | undefined = part?.inlineData?.data
+    const mime: string = part?.inlineData?.mimeType ?? 'image/png'
+    if (!b64) return { blob: null, error: 'Keine Bild-Daten in der API-Antwort' }
+    return { blob: base64ToBlob(b64, mime), error: null }
+  } catch (e: any) {
+    return { blob: null, error: e?.message ?? 'Netzwerkfehler' }
+  }
 }
 
 // ─── Settings Modal ───────────────────────────────────────────────────────────
@@ -932,6 +976,7 @@ interface WizardWord {
   imageBlob: Blob | null
   imagePreview: string | null
   status: 'pending' | 'generating' | 'done' | 'failed'
+  errorMsg?: string
 }
 
 function PhotoWizard({ token, geminiKey, onDone, onBack }: {
@@ -944,7 +989,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   const [ocrError, setOcrError] = useState('')
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [words, setWords] = useState<WizardWord[]>([])
-  const [unitForm, setUnitForm] = useState({ title: '', emoji: '📚', targetUser: 'fiona', active: true })
+  const [unitForm, setUnitForm] = useState({ title: '', emoji: '📚', targetUser: 'fiona', language: 'en', active: true })
   const [genProgress, setGenProgress] = useState(0)
   const [genRunning, setGenRunning] = useState(false)
   const [genDone, setGenDone] = useState(false)
@@ -957,21 +1002,33 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     const file = e.target.files?.[0]
     if (!file) return
     setOcrError('')
-    const reader = new FileReader()
-    reader.onload = async () => {
-      const dataUrl = reader.result as string
-      setPhotoPreview(dataUrl)
-      const base64 = dataUrl.split(',')[1]
-      setOcrLoading(true)
-      try {
-        const extracted = await ocrVocabFromPhoto(geminiKey, base64)
-        setWords(extracted.map(w => ({ ...w, type: 'word' as const, imageBlob: null, imagePreview: null, status: 'pending' as const })))
-        setStep('review')
-      } catch (err: any) {
-        setOcrError(err.message || 'OCR fehlgeschlagen')
-      } finally { setOcrLoading(false) }
-    }
-    reader.readAsDataURL(file)
+    setOcrLoading(true)
+    try {
+      // Resize to max 1024px to keep payload small
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          const maxDim = 1024
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+          const w = Math.round(img.width * scale)
+          const h = Math.round(img.height * scale)
+          const canvas = document.createElement('canvas')
+          canvas.width = w; canvas.height = h
+          canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+          resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
+        }
+        img.onerror = reject
+        img.src = url
+      })
+      setPhotoPreview(`data:image/jpeg;base64,${base64}`)
+      const extracted = await ocrVocabFromPhoto(geminiKey, base64)
+      setWords(extracted.map(w => ({ ...w, type: (w.type ?? 'word') as 'word' | 'phrase', imageBlob: null, imagePreview: null, status: 'pending' as const })))
+      setStep('review')
+    } catch (err: any) {
+      setOcrError(err.message || 'OCR fehlgeschlagen')
+    } finally { setOcrLoading(false) }
   }
 
   function removeWord(i: number) { setWords(w => w.filter((_, j) => j !== i)) }
@@ -990,12 +1047,13 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     for (let i = 0; i < updated.length; i++) {
       updated[i] = { ...updated[i], status: 'generating' }
       setWords([...updated])
-      const blob = await generateVocabImage(geminiKey, updated[i].en, updated[i].de)
+      const { blob, error } = await generateVocabImage(geminiKey, updated[i].en, updated[i].de)
       updated[i] = {
         ...updated[i],
         imageBlob: blob,
         imagePreview: blob ? URL.createObjectURL(blob) : null,
         status: blob ? 'done' : 'failed',
+        errorMsg: error ?? undefined,
       }
       setWords([...updated])
       setGenProgress(i + 1)
@@ -1012,7 +1070,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     try {
       const unit = await createVocabUnit(token, {
         title: unitForm.title.trim(), subtitle: '', emoji: unitForm.emoji,
-        targetUser: unitForm.targetUser, active: unitForm.active, sortOrder: 99,
+        targetUser: unitForm.targetUser, language: unitForm.language, active: unitForm.active, sortOrder: 99,
       })
       const validWords = words.filter(w => w.en.trim() && w.de.trim())
       for (let i = 0; i < validWords.length; i++) {
@@ -1097,6 +1155,16 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
                 <option value="fiona">Fiona</option>
               </select>
             </div>
+            <div className="form-group">
+              <label>Sprache</label>
+              <select className="field" value={unitForm.language}
+                onChange={e => setUnitForm(f => ({ ...f, language: e.target.value }))}>
+                <option value="en">🇬🇧 Englisch</option>
+                <option value="fr">🇫🇷 Französisch</option>
+                <option value="es">🇪🇸 Spanisch</option>
+                <option value="it">🇮🇹 Italienisch</option>
+              </select>
+            </div>
           </div>
 
           <div className="section-header" style={{ marginBottom: 8 }}>
@@ -1154,12 +1222,17 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
                   <span className="error-msg" style={{ margin: 0 }}>⚠️ {words.filter(w => w.status === 'failed').length} fehlgeschlagen (werden ohne Bild gespeichert)</span>
                 )}
               </div>
+              {words.some(w => w.status === 'failed' && w.errorMsg) && (
+                <div className="error-msg" style={{ margin: '0 0 12px', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                  API-Fehler: {words.find(w => w.status === 'failed' && w.errorMsg)?.errorMsg}
+                </div>
+              )}
               <div className="image-preview-grid">
                 {words.map((w, i) => (
                   <div key={i} className="preview-item">
                     {w.imagePreview
                       ? <img src={w.imagePreview} alt={w.en} className="preview-img" />
-                      : <div className="preview-placeholder">{w.status === 'failed' ? '❌' : '⏳'}</div>
+                      : <div className="preview-placeholder" title={w.errorMsg ?? ''}>{w.status === 'failed' ? '❌' : '⏳'}</div>
                     }
                     <div className="preview-label">{w.en}</div>
                   </div>
@@ -1294,6 +1367,7 @@ export default function App() {
           />
         )}
       </main>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.5</div>
     </div>
   )
 }
