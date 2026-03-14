@@ -332,6 +332,33 @@ export async function bulkImportVocab(token: string, unitId: string, rawText: st
   return created
 }
 
+export async function createVocabItemWithImage(
+  token: string,
+  unitId: string,
+  en: string,
+  de: string,
+  type: 'word' | 'phrase',
+  imageBlob: Blob | null
+): Promise<VocabItem> {
+  const formData = new FormData()
+  formData.append('unit', unitId)
+  formData.append('en', en.trim())
+  formData.append('de', de.trim())
+  formData.append('type', type)
+  if (imageBlob) {
+    formData.append('image', imageBlob, `${en.trim().replace(/\s+/g, '_')}.jpg`)
+  }
+  // No Content-Type header — browser sets multipart boundary automatically
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  if (!res.ok) throw new Error('Wort speichern fehlgeschlagen')
+  const r = await res.json()
+  return { id: r.id, unitId: r.unit, en: r.en, de: r.de, type: r.type }
+}
+
 export function parseBulkText(rawText: string): { en: string; de: string; type: 'word' | 'phrase' }[] {
   const lines = rawText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
   const parsed: { en: string; de: string; type: 'word' | 'phrase' }[] = []

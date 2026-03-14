@@ -63,9 +63,11 @@ export function logout() {
 // ─── Dynamic Vocab Units ──────────────────────────────────────────────────────
 
 export interface VocabItem {
+  id?: string
   en: string
   de: string
   type: 'word' | 'phrase'
+  imageUrl?: string
 }
 
 export interface VocabUnit {
@@ -114,9 +116,11 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
   if (!res.ok) throw new Error('Wörter laden fehlgeschlagen')
   const data = await res.json()
   return (data.items ?? []).map((r: any) => ({
+    id: r.id,
     en: r.en,
     de: r.de,
     type: r.type ?? 'word',
+    imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}` : undefined,
   }))
 }
 

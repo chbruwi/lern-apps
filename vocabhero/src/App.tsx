@@ -173,6 +173,10 @@ function FlipCards({ vocab, onScore, onBack }: { vocab: VocabItem[]; onScore: (n
         <div className={`flip-card ${flipped ? 'is-flipped' : ''}`}>
           <div className="flip-face flip-front">
             <span className="flip-lang">{lang}</span>
+            {showEn && card.imageUrl && (
+              <img src={card.imageUrl} alt={card.en}
+                style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
+            )}
             <span className="flip-text">{front}</span>
           </div>
           <div className="flip-face flip-back">

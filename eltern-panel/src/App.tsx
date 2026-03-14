@@ -6,7 +6,7 @@ import {
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, deleteVocabItem,
-  bulkImportVocab, parseBulkText,
+  createVocabItemWithImage, bulkImportVocab, parseBulkText,
 } from './pb'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ import {
 type Screen =
   | 'login' | 'dashboard'
   | 'math-list' | 'math-form'
-  | 'vocab-list' | 'vocab-detail' | 'vocab-bulk'
+  | 'vocab-list' | 'vocab-detail' | 'vocab-bulk' | 'vocab-photo'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,8 +95,8 @@ function LoginScreen({ onLogin }: { onLogin: (p: Parent) => void }) {
 
 // ─── Nav Bar ──────────────────────────────────────────────────────────────────
 
-function NavBar({ screen, onNav, onLogout, parentName }: {
-  screen: Screen; onNav: (s: Screen) => void; onLogout: () => void; parentName: string
+function NavBar({ screen, onNav, onLogout, parentName, onSettings }: {
+  screen: Screen; onNav: (s: Screen) => void; onLogout: () => void; parentName: string; onSettings: () => void
 }) {
   return (
     <nav className="navbar">
@@ -114,6 +114,7 @@ function NavBar({ screen, onNav, onLogout, parentName }: {
       </div>
       <div className="nav-right">
         <span className="nav-user">👤 {parentName}</span>
+        <button className="nav-logout" onClick={onSettings} title="Einstellungen">⚙️</button>
         <button className="nav-logout" onClick={onLogout}>Abmelden</button>
       </div>
     </nav>
@@ -438,7 +439,7 @@ function MathForm({ token, existing, onSave, onCancel }: {
 
 // ─── Vocab Units List ─────────────────────────────────────────────────────────
 
-function VocabList({ token, onDetail }: { token: string; onDetail: (u: VocabUnit) => void }) {
+function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: VocabUnit) => void; onPhoto: () => void }) {
   const [units, setUnits] = useState<VocabUnit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -475,9 +476,12 @@ function VocabList({ token, onDetail }: { token: string; onDetail: (u: VocabUnit
     <div className="content">
       <div className="page-header">
         <h2 className="page-title">🃏 Vokabel-Einheiten</h2>
-        <button className="btn-primary" onClick={() => setShowForm(s => !s)}>
-          {showForm ? '✕ Abbrechen' : '+ Neue Einheit'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={onPhoto}>📸 Aus Foto</button>
+          <button className="btn-primary" onClick={() => setShowForm(s => !s)}>
+            {showForm ? '✕ Abbrechen' : '+ Neue Einheit'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -816,6 +820,378 @@ function BulkImport({ token, unit, onBack }: {
   )
 }
 
+// ─── Gemini API Helpers ───────────────────────────────────────────────────────
+
+const GEMINI_KEY_SK = 'lernheld-gemini-key'
+export function getGeminiKey(): string {
+  try { return localStorage.getItem(GEMINI_KEY_SK) || '' } catch { return '' }
+}
+function saveGeminiKey(key: string) {
+  try { localStorage.setItem(GEMINI_KEY_SK, key) } catch {}
+}
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const bytes = atob(base64)
+  const arr = new Uint8Array(bytes.length)
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+  return new Blob([arr], { type: mimeType })
+}
+
+async function ocrVocabFromPhoto(apiKey: string, imageBase64: string): Promise<{ en: string; de: string }[]> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: 'This image shows a vocabulary list. Extract all word/phrase pairs. Return ONLY a JSON array like: [{"en":"word","de":"Übersetzung"}]. English on left, German translation on right. No markdown, no explanation — only the raw JSON array.' },
+            { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }
+          ]
+        }]
+      })
+    }
+  )
+  if (!res.ok) throw new Error(`Gemini Fehler (${res.status})`)
+  const data = await res.json()
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const match = text.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error('Keine Wörter erkannt – bitte manuell eingeben')
+  return JSON.parse(match[0])
+}
+
+async function generateVocabImage(apiKey: string, en: string, de: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{
+            prompt: `Children's educational flashcard illustration: "${en}" (German: ${de}). Simple, colorful, clear depiction of the concept, cartoon style, no text, white background.`
+          }],
+          parameters: { sampleCount: 1, aspectRatio: '1:1' }
+        })
+      }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const b64: string | undefined = data.predictions?.[0]?.bytesBase64Encoded
+    if (!b64) return null
+    return base64ToBlob(b64, 'image/png')
+  } catch { return null }
+}
+
+// ─── Settings Modal ───────────────────────────────────────────────────────────
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [key, setKey] = useState(getGeminiKey)
+  const [saved, setSaved] = useState(false)
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    saveGeminiKey(key.trim())
+    setSaved(true)
+    setTimeout(onClose, 800)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>⚙️ Einstellungen</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSave}>
+          <div className="form-group">
+            <label>Gemini API Key</label>
+            <input className="field" type="password" placeholder="AIza..."
+              value={key} onChange={e => setKey(e.target.value)} autoComplete="off" />
+            <span className="field-hint">
+              Holen unter <a href="https://aistudio.google.com" target="_blank" rel="noopener">aistudio.google.com</a> → "Get API key". Wird nur lokal gespeichert.
+            </span>
+          </div>
+          {saved && <p className="success-msg">✅ Gespeichert!</p>}
+          <div className="form-actions">
+            <button type="submit" className="btn-primary" disabled={!key.trim()}>💾 Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Photo Wizard ─────────────────────────────────────────────────────────────
+
+interface WizardWord {
+  en: string
+  de: string
+  type: 'word' | 'phrase'
+  imageBlob: Blob | null
+  imagePreview: string | null
+  status: 'pending' | 'generating' | 'done' | 'failed'
+}
+
+function PhotoWizard({ token, geminiKey, onDone, onBack }: {
+  token: string; geminiKey: string
+  onDone: () => void; onBack: () => void
+}) {
+  type Step = 'upload' | 'review' | 'generate'
+  const [step, setStep] = useState<Step>('upload')
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrError, setOcrError] = useState('')
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [words, setWords] = useState<WizardWord[]>([])
+  const [unitForm, setUnitForm] = useState({ title: '', emoji: '📚', targetUser: 'fiona', active: true })
+  const [genProgress, setGenProgress] = useState(0)
+  const [genRunning, setGenRunning] = useState(false)
+  const [genDone, setGenDone] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveProgress, setSaveProgress] = useState(0)
+  const [saveDone, setSaveDone] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setOcrError('')
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const dataUrl = reader.result as string
+      setPhotoPreview(dataUrl)
+      const base64 = dataUrl.split(',')[1]
+      setOcrLoading(true)
+      try {
+        const extracted = await ocrVocabFromPhoto(geminiKey, base64)
+        setWords(extracted.map(w => ({ ...w, type: 'word' as const, imageBlob: null, imagePreview: null, status: 'pending' as const })))
+        setStep('review')
+      } catch (err: any) {
+        setOcrError(err.message || 'OCR fehlgeschlagen')
+      } finally { setOcrLoading(false) }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function removeWord(i: number) { setWords(w => w.filter((_, j) => j !== i)) }
+  function updateWord(i: number, field: 'en' | 'de' | 'type', val: string) {
+    setWords(w => w.map((word, j) => j === i ? { ...word, [field]: val } : word))
+  }
+  function addWord() {
+    setWords(w => [...w, { en: '', de: '', type: 'word', imageBlob: null, imagePreview: null, status: 'pending' }])
+  }
+
+  async function handleGenerate() {
+    setStep('generate')
+    setGenRunning(true)
+    setGenProgress(0)
+    const updated = [...words]
+    for (let i = 0; i < updated.length; i++) {
+      updated[i] = { ...updated[i], status: 'generating' }
+      setWords([...updated])
+      const blob = await generateVocabImage(geminiKey, updated[i].en, updated[i].de)
+      updated[i] = {
+        ...updated[i],
+        imageBlob: blob,
+        imagePreview: blob ? URL.createObjectURL(blob) : null,
+        status: blob ? 'done' : 'failed',
+      }
+      setWords([...updated])
+      setGenProgress(i + 1)
+      // Small delay to avoid rate limiting
+      if (i < updated.length - 1) await new Promise(r => setTimeout(r, 300))
+    }
+    setGenRunning(false)
+    setGenDone(true)
+  }
+
+  async function handleSave() {
+    if (!unitForm.title.trim()) { setSaveError('Bitte Titel eingeben'); return }
+    setSaving(true); setSaveError(''); setSaveProgress(0)
+    try {
+      const unit = await createVocabUnit(token, {
+        title: unitForm.title.trim(), subtitle: '', emoji: unitForm.emoji,
+        targetUser: unitForm.targetUser, active: unitForm.active, sortOrder: 99,
+      })
+      const validWords = words.filter(w => w.en.trim() && w.de.trim())
+      for (let i = 0; i < validWords.length; i++) {
+        const w = validWords[i]
+        await createVocabItemWithImage(token, unit.id, w.en, w.de, w.type, w.imageBlob)
+        setSaveProgress(i + 1)
+      }
+      setSaveDone(true)
+    } catch (err: any) {
+      setSaveError(err.message || 'Speichern fehlgeschlagen')
+    } finally { setSaving(false) }
+  }
+
+  if (saveDone) {
+    return (
+      <div className="content">
+        <div className="empty-card" style={{ textAlign: 'center', padding: 48 }}>
+          <div style={{ fontSize: 48 }}>✅</div>
+          <h3 style={{ marginTop: 12 }}>Unit erstellt!</h3>
+          <p>{unitForm.emoji} {unitForm.title} mit {words.filter(w => w.en && w.de).length} Wörtern</p>
+          <button className="btn-primary" style={{ marginTop: 16 }} onClick={onDone}>Zur Unit-Liste</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="content">
+      <div className="page-header">
+        <h2 className="page-title">📸 Neue Unit aus Foto</h2>
+        <button className="btn-secondary" onClick={onBack}>← Zurück</button>
+      </div>
+
+      {/* Step indicator */}
+      <div className="wizard-steps">
+        {(['upload', 'review', 'generate'] as Step[]).map((s, i) => (
+          <div key={s} className={`wizard-step ${step === s ? 'step-active' : steps_done(step, s) ? 'step-done' : ''}`}>
+            <span className="step-num">{steps_done(step, s) ? '✓' : i + 1}</span>
+            <span className="step-label">{s === 'upload' ? 'Foto' : s === 'review' ? 'Prüfen' : 'Generieren'}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1: Upload */}
+      {step === 'upload' && (
+        <div className="form-card">
+          {!geminiKey && (
+            <div className="warning-box">⚠️ Kein Gemini API Key gesetzt. Bitte zuerst unter ⚙️ den Key eintragen.</div>
+          )}
+          <div className="form-group">
+            <label>Foto der Vokabelliste</label>
+            <input type="file" accept="image/*" capture="environment" className="field"
+              onChange={handleFileChange} disabled={ocrLoading || !geminiKey} />
+            <span className="field-hint">Foto machen oder Bild aus Galerie wählen. Gemini liest die Wörter automatisch aus.</span>
+          </div>
+          {ocrLoading && <p className="loading">⏳ Wörter werden erkannt...</p>}
+          {ocrError && <p className="error-msg">{ocrError}</p>}
+          {photoPreview && <img src={photoPreview} alt="Foto" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, marginTop: 12 }} />}
+        </div>
+      )}
+
+      {/* Step 2: Review */}
+      {step === 'review' && (
+        <div className="form-card">
+          <div className="form-row" style={{ marginBottom: 16 }}>
+            <div className="form-group form-group-sm">
+              <label>Emoji</label>
+              <input className="field" value={unitForm.emoji} maxLength={4}
+                onChange={e => setUnitForm(f => ({ ...f, emoji: e.target.value }))} />
+            </div>
+            <div className="form-group form-group-grow">
+              <label>Unit-Titel *</label>
+              <input className="field" placeholder="z.B. Unit 4 – Sport & Fitness"
+                value={unitForm.title} onChange={e => setUnitForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label>Für wen?</label>
+              <select className="field" value={unitForm.targetUser}
+                onChange={e => setUnitForm(f => ({ ...f, targetUser: e.target.value }))}>
+                <option value="">Alle</option>
+                <option value="andrin">Andrin</option>
+                <option value="fiona">Fiona</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="section-header" style={{ marginBottom: 8 }}>
+            <h4>📝 {words.length} Wörter erkannt</h4>
+            <button type="button" className="btn-sm" onClick={addWord}>+ Wort</button>
+          </div>
+          <div className="table-wrap">
+            <table className="word-table">
+              <thead><tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th></th></tr></thead>
+              <tbody>
+                {words.map((w, i) => (
+                  <tr key={i}>
+                    <td><input className="field field-inline" value={w.en}
+                      onChange={e => updateWord(i, 'en', e.target.value)} /></td>
+                    <td><input className="field field-inline" value={w.de}
+                      onChange={e => updateWord(i, 'de', e.target.value)} /></td>
+                    <td>
+                      <select className="field-sm" value={w.type}
+                        onChange={e => updateWord(i, 'type', e.target.value)}>
+                        <option value="word">Wort</option>
+                        <option value="phrase">Satz</option>
+                      </select>
+                    </td>
+                    <td><button className="btn-sm btn-danger" onClick={() => removeWord(i)}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="form-actions" style={{ marginTop: 16 }}>
+            <button className="btn-primary" onClick={handleGenerate}
+              disabled={words.length === 0 || !unitForm.title.trim()}>
+              🎨 Bilder generieren →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Generate & Save */}
+      {step === 'generate' && (
+        <div className="form-card">
+          {genRunning && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ marginBottom: 8 }}>⏳ Generiere Bild {genProgress + 1} von {words.length}...</p>
+              <div className="progress-bar-wrap">
+                <div className="progress-bar-fill" style={{ width: `${(genProgress / words.length) * 100}%` }} />
+              </div>
+            </div>
+          )}
+          {genDone && !saving && !saveDone && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <span className="success-msg" style={{ margin: 0 }}>✅ {words.filter(w => w.status === 'done').length} Bilder generiert</span>
+                {words.filter(w => w.status === 'failed').length > 0 && (
+                  <span className="error-msg" style={{ margin: 0 }}>⚠️ {words.filter(w => w.status === 'failed').length} fehlgeschlagen (werden ohne Bild gespeichert)</span>
+                )}
+              </div>
+              <div className="image-preview-grid">
+                {words.map((w, i) => (
+                  <div key={i} className="preview-item">
+                    {w.imagePreview
+                      ? <img src={w.imagePreview} alt={w.en} className="preview-img" />
+                      : <div className="preview-placeholder">{w.status === 'failed' ? '❌' : '⏳'}</div>
+                    }
+                    <div className="preview-label">{w.en}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {saving && (
+            <div style={{ marginBottom: 16 }}>
+              <p>💾 Speichere {saveProgress} / {words.filter(w => w.en && w.de).length}...</p>
+              <div className="progress-bar-wrap">
+                <div className="progress-bar-fill" style={{ width: `${(saveProgress / words.filter(w => w.en && w.de).length) * 100}%` }} />
+              </div>
+            </div>
+          )}
+          {saveError && <p className="error-msg">{saveError}</p>}
+          {genDone && !saving && !saveDone && (
+            <div className="form-actions">
+              <button className="btn-primary" onClick={handleSave}>💾 In PocketBase speichern</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function steps_done(current: string, check: string): boolean {
+  const order = ['upload', 'review', 'generate']
+  return order.indexOf(current) > order.indexOf(check)
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -824,6 +1200,8 @@ export default function App() {
   const [editingMathUnit, setEditingMathUnit] = useState<MathUnit | null | 'new'>(null)
   const [detailVocabUnit, setDetailVocabUnit] = useState<VocabUnit | null>(null)
   const [bulkVocabUnit, setBulkVocabUnit] = useState<VocabUnit | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [geminiKey, setGeminiKeyState] = useState(getGeminiKey)
 
   function handleLogin(p: Parent) {
     setParent(p)
@@ -843,15 +1221,22 @@ export default function App() {
     setBulkVocabUnit(null)
   }
 
+  function handleSettingsClose() {
+    setShowSettings(false)
+    setGeminiKeyState(getGeminiKey())
+  }
+
   if (!parent) return <LoginScreen onLogin={handleLogin} />
 
   return (
     <div className="app">
+      {showSettings && <SettingsModal onClose={handleSettingsClose} />}
       <NavBar
         screen={screen}
         onNav={navTo}
         onLogout={handleLogout}
         parentName={parent.name}
+        onSettings={() => setShowSettings(true)}
       />
       <main className="main">
         {screen === 'dashboard' && <Dashboard token={parent.token} />}
@@ -876,7 +1261,7 @@ export default function App() {
           <VocabList token={parent.token} onDetail={u => {
             setDetailVocabUnit(u)
             setScreen('vocab-detail')
-          }} />
+          }} onPhoto={() => setScreen('vocab-photo')} />
         )}
 
         {screen === 'vocab-detail' && detailVocabUnit && (
@@ -897,6 +1282,15 @@ export default function App() {
               setBulkVocabUnit(null)
               setScreen('vocab-detail')
             }}
+          />
+        )}
+
+        {screen === 'vocab-photo' && (
+          <PhotoWizard
+            token={parent.token}
+            geminiKey={geminiKey}
+            onDone={() => setScreen('vocab-list')}
+            onBack={() => setScreen('vocab-list')}
           />
         )}
       </main>
