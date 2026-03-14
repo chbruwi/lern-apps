@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Parent, Child, MathUnit, VocabUnit, VocabItem, ActivityEntry, Operation,
   parentLogin, getParentAuth, parentLogout,
@@ -187,8 +187,8 @@ function Dashboard({ token }: { token: string }) {
               <table className="log-table">
                 <thead>
                   <tr>
-                    <th>Datum</th><th>Kind</th><th>App</th><th>Einheit</th>
-                    <th>Modus</th><th>Score</th><th>Münzen</th>
+                    <th>Datum</th><th>Kind</th><th className="td-hide-mobile">App</th><th>Einheit</th>
+                    <th className="td-hide-mobile">Modus</th><th>Score</th><th>🪙</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,13 +196,13 @@ function Dashboard({ token }: { token: string }) {
                     <tr key={e.id}>
                       <td className="td-date">{formatDate(e.playedAt)}</td>
                       <td><strong>{e.username}</strong></td>
-                      <td>{APP_LABELS[e.app] ?? e.app}</td>
+                      <td className="td-hide-mobile">{APP_LABELS[e.app] ?? e.app}</td>
                       <td>{e.unitTitle || '—'}</td>
-                      <td>{MODE_LABELS[e.gameMode] ?? e.gameMode}</td>
+                      <td className="td-hide-mobile">{MODE_LABELS[e.gameMode] ?? e.gameMode}</td>
                       <td className={e.score === e.total ? 'score-perfect' : 'score-ok'}>
                         {e.score}/{e.total}
                       </td>
-                      <td>🪙 {e.coinsEarned}</td>
+                      <td>{e.coinsEarned}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -997,6 +997,8 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   const [saveProgress, setSaveProgress] = useState(0)
   const [saveDone, setSaveDone] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1120,14 +1122,28 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
           {!geminiKey && (
             <div className="warning-box">⚠️ Kein Gemini API Key gesetzt. Bitte zuerst unter ⚙️ den Key eintragen.</div>
           )}
-          <div className="form-group">
-            <label>Foto der Vokabelliste</label>
-            <input type="file" accept="image/*" capture="environment" className="field"
-              onChange={handleFileChange} disabled={ocrLoading || !geminiKey} />
-            <span className="field-hint">Foto machen oder Bild aus Galerie wählen. Gemini liest die Wörter automatisch aus.</span>
-          </div>
-          {ocrLoading && <p className="loading">⏳ Wörter werden erkannt...</p>}
-          {ocrError && <p className="error-msg">{ocrError}</p>}
+          {/* Hidden inputs */}
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+            style={{ display: 'none' }} onChange={handleFileChange} disabled={ocrLoading || !geminiKey} />
+          <input ref={galleryRef} type="file" accept="image/*"
+            style={{ display: 'none' }} onChange={handleFileChange} disabled={ocrLoading || !geminiKey} />
+
+          {ocrLoading ? (
+            <p className="loading">⏳ Wörter werden erkannt...</p>
+          ) : (
+            <div className="upload-zone" onClick={() => !ocrLoading && geminiKey && cameraRef.current?.click()}>
+              <span className="upload-icon">📸</span>
+              <span className="upload-title">Foto aufnehmen</span>
+              <span className="upload-hint">Kamera öffnet sich direkt</span>
+              <button type="button" className="btn-secondary upload-gallery-btn"
+                disabled={!geminiKey}
+                onClick={e => { e.stopPropagation(); galleryRef.current?.click() }}>
+                🖼️ Aus Galerie wählen
+              </button>
+            </div>
+          )}
+
+          {ocrError && <p className="error-msg" style={{ marginTop: 12 }}>{ocrError}</p>}
           {photoPreview && <img src={photoPreview} alt="Foto" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, marginTop: 12 }} />}
         </div>
       )}

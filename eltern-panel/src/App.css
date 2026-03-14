@@ -301,17 +301,62 @@ body {
 }
 .format-example code { font-family: 'Courier New', monospace; color: var(--primary) }
 
+/* ── Upload Zone ───────────────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--primary); border-radius: 16px;
+  background: #eef2ff; padding: 36px 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer; transition: background .15s;
+  text-align: center;
+}
+.upload-zone:hover { background: #e0e7ff }
+.upload-icon { font-size: 3rem; line-height: 1 }
+.upload-title { font-size: 1.1rem; font-weight: 700; color: var(--primary) }
+.upload-hint { font-size: 0.82rem; color: var(--text2) }
+.upload-gallery-btn { margin-top: 4px; font-size: 0.85rem }
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  .main { padding: 16px 12px }
-  .navbar { padding: 0 12px; gap: 6px }
-  .nav-logo { font-size: 0.9rem }
-  .nav-btn { padding: 5px 8px; font-size: 0.8rem }
-  .unit-row { flex-wrap: wrap }
-  .unit-row-actions { width: 100%; justify-content: flex-start }
+  .main { padding: 12px 10px }
+
+  /* Navbar: kompakt */
+  .navbar { padding: 0 10px; gap: 4px; height: 52px }
+  .nav-logo { font-size: 0; width: 28px; overflow: visible }
+  .nav-logo::before { content: '🔑'; font-size: 1.2rem }
+  .nav-btn { padding: 6px 10px; font-size: 0.78rem }
+  .nav-user { display: none }
+  .nav-logout { padding: 5px 8px; font-size: 0.78rem }
+
+  /* Unit rows */
+  .unit-row { flex-wrap: wrap; padding: 12px }
+  .unit-row-actions { width: 100%; justify-content: flex-start; margin-top: 4px }
+
+  /* Dashboard */
   .children-grid { grid-template-columns: 1fr }
+
+  /* Forms */
   .add-word-form { flex-direction: column }
   .form-row { flex-direction: column }
+  .form-card { padding: 16px }
+
+  /* Log table: scroll + hide less important cols */
+  .log-table .td-hide-mobile { display: none }
+
+  /* Upload zone: bigger tap target */
+  .upload-zone { padding: 40px 16px; gap: 12px }
+  .upload-icon { font-size: 3.5rem }
+  .upload-title { font-size: 1.25rem }
+
+  /* Page header */
+  .page-header { gap: 8px }
+  .page-title { font-size: 1.2rem }
+
+  /* Section header */
+  .section-header { margin: 16px 0 10px }
+
+  /* Wizard steps: compress labels */
+  .step-label { font-size: 0.78rem }
+  .wizard-step { padding: 8px 10px; gap: 6px }
 }
 
 /* ── Modal ─────────────────────────────────────────────────────────────── */
