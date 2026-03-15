@@ -164,16 +164,24 @@ first aid = erste Hilfe
 ```
 Parser: Split bei `=`, `[phrase]`-Suffix erkannt → Preview → sequenziell importiert.
 
-- **📸 Foto-Wizard:** Foto der Vokabelliste → OCR → Bilder generieren → in PocketBase speichern
+- **📸 Foto-Wizard:** Foto der Vokabelliste → OCR → Bilder + Audio generieren → in PocketBase speichern
   - 3-Schritt-Wizard: Foto | Prüfen | Generieren
   - OCR: `gemini-2.0-flash` Vision API → JSON-Array `[{en, de, type}]`
   - Bildgenerierung: `gemini-2.5-flash-image` mit `responseModalities: ['IMAGE']` ✅ funktioniert
-  - Prompt: `"Children's educational flashcard illustration: "${en}" (German: ${de}). Square 1:1 format. Simple, colorful, clear depiction, cartoon style, no text, white background."`
+  - Bild-Prompt: `"Children's educational flashcard illustration: "${en}" (German: ${de}). Square 1:1 format. Simple, colorful, clear depiction, cartoon style, no text, white background."`
+  - **Audiogenerierung:** `gemini-2.5-flash-preview-tts`, Stimme `Achird`, PCM 24000 Hz → WAV (kein lamejs)
+  - Pro Wort: `Promise.all([generateVocabImage, generateVocabAudio(en), generateVocabAudio(de)])` parallel
+  - 500ms Rate-Limit Delay zwischen Wörtern
   - Bilder werden als `Blob` im State gehalten, Upload via `FormData` (multipart)
-  - Fehlschlagende Bilder werden ohne Bild gespeichert (Fallback)
+  - Fehlschlagende Bilder/Audios werden ohne gespeichert (Fallback)
   - Gemini API Key: localStorage `lernheld-gemini-key` + PocketBase `parents.gemini_key` (geräteübergreifend sync)
   - Key-Sync: beim Speichern → PB; beim Login + App-Start → PB→localStorage
-  - Version: unten rechts sichtbar (aktuell v1.5), bei jedem Deploy erhöhen
+  - Version: unten rechts sichtbar (aktuell v1.6), bei jedem Deploy erhöhen
+
+- **📋 Bulk Import:** Wörter einfügen → Vorschau → Import mit Bild + Audio Generierung
+  - Wenn Gemini Key gesetzt: `generateVocabImage` + `generateVocabAudio` (lang + de) pro Wort
+  - Fortschrittsanzeige im Button-Label (`X/N Bild & Audio...`)
+  - 500ms Rate-Limit Delay zwischen Wörtern
 
 **Mobile-Optimierungen:**
 - Upload-Zone mit direkter Kamera-Capture (`capture="environment"`) + separater Galerie-Button
@@ -189,6 +197,11 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:ge
 POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=KEY
 // body: { contents: [{parts: [{text: "prompt"}]}], generationConfig: { responseModalities: ['IMAGE'] } }
 // response: candidates[0].content.parts[].inlineData.{data: base64, mimeType}
+// Audiogenerierung ✅
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=KEY
+// body: { contents: [...], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Achird' } } } } }
+// response: candidates[0].content.parts[0].inlineData.data (raw PCM base64, 24000 Hz mono)
+// Konvertierung: pcmToWav(base64) → Blob('audio/wav') — kein lamejs nötig
 ```
 
 **⚠️ Nicht möglich vom Browser:** Anthropic/Claude API → CORS blockiert immer.
@@ -234,11 +247,14 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-im
   - 🃏 **Karteikarten** — Flip-Karte mit Bild auf **beiden Seiten** (EN + DE), dann Gewusst/Nochmal
   - 🔗 **Match-It** — 6 Paare zuordnen; linke Seite zeigt Bild + Text wenn EN, rechts nur Text
   - ⚡ **Speed-Quiz** — Multiple Choice, Bild immer sichtbar (egal ob EN- oder DE-Frage)
-  - 🔤 **Buchstaben-Salat** — Buchstaben sortieren; Bild als Hinweis wenn EN-Seite
+  - 🔤 **Buchstaben-Salat** — Buchstaben sortieren; bei EN-Units: zufällige Richtung (EN oder DE scramble); bei FR/ES/IT-Units: immer DE als Hinweis, Hauptwort scramble (Artikel werden vor dem Scramble abgezogen: la/le/les/l'/…)
 - Lazy Vocab-Load: Wörter werden erst beim Unit-Start geladen (`fetchVocabItems()`)
 - Beide Richtungen: EN→DE und DE→EN zufällig gemischt
 - Stale-While-Revalidate: Units gecacht in localStorage (`lernheld-vocab-units-v1`)
 - **Bild-Integration:** `VocabItem.imageUrl` kommt aus PocketBase File-URL; Karten ohne Bild funktionieren text-only
+- **Audio-Integration:** `VocabItem.audioLangUrl` + `audioDeUrl` aus PocketBase; `SpeakerButton` Komponente
+  - Klick → `new Audio(url).play()`, pulsiert während Wiedergabe, `e.stopPropagation()` verhindert Card-Flip
+  - Eingebaut in: Karteikarten (Vorder+Rückseite), Speed-Quiz (Frage), Buchstaben-Salat (Hinweis-Wort)
 
 **Auto-Select Logik mit Bild-Laden (wichtig!):**
 ```typescript
@@ -441,6 +457,8 @@ services:
 | type | select: `word` / `phrase` | default: `word` |
 | sort_order | number | default: 0 |
 | image | file (max 1, `image/*`) | Optional – vom Foto-Wizard via Gemini generiert |
+| audio_lang | file (max 1) | Aussprache `en`-Feld (EN/FR/ES/IT) als WAV |
+| audio_de | file (max 1) | Aussprache `de`-Feld (Deutsch) als WAV |
 
 **API-Regeln:** identisch wie `math_units`
 
@@ -496,20 +514,20 @@ logActivity(user, entry)          // POST activity_log (silent failure)
 fetchVocabUnits(token, fallback)  // GET vocab_units (active=true, sort=sort_order)
                                   // → localStorage Cache (Key: lernheld-vocab-units-v1)
 fetchVocabItems(token, unitId)    // GET vocab_items (filter=unit='ID', sort=sort_order,en)
-                                  // → mappt: imageUrl = r.image
-                                  //     ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}`
-                                  //     : undefined
+                                  // → mappt: imageUrl, audioLangUrl, audioDeUrl aus PB File-URLs
 logActivity(user, entry)          // POST activity_log (silent failure)
 ```
 
-**`VocabItem` Interface:**
+**`VocabItem` Interface (beide Apps):**
 ```typescript
 export interface VocabItem {
-  id?: string        // PocketBase Record-ID (für File-URL nötig)
+  id?: string         // PocketBase Record-ID (für File-URL nötig)
   en: string
   de: string
   type: 'word' | 'phrase'
-  imageUrl?: string  // vollständige URL zum PocketBase-Bild (optional)
+  imageUrl?: string       // vollständige URL zum PocketBase-Bild (optional)
+  audioLangUrl?: string   // Aussprache en-Feld (EN/FR/ES/IT) als WAV-URL
+  audioDeUrl?: string     // Aussprache de-Feld (Deutsch) als WAV-URL
 }
 ```
 
@@ -553,9 +571,11 @@ deleteVocabUnit(token, id)
 fetchVocabItems(token, unitId)
 createVocabItem(token, data)
 updateVocabItem(token, id, { en, de, type })  // PATCH – inline editing
-createVocabItemWithImage(token, unitId, en, de, type, imageBlob | null)
+createVocabItemWithImage(token, unitId, en, de, type, imageBlob, audioLangBlob?, audioDeBlob?)
   // → FormData (multipart), kein Content-Type Header setzen!
-  // → imageBlob = null → speichert ohne Bild
+  // → null/undefined = Feld wird weggelassen (kein Bild/Audio gespeichert)
+updateVocabItemAudio(token, id, audioLangBlob, audioDeBlob, en, de)
+  // → PATCH mit FormData – Audio zu bestehendem Record hinzufügen
 deleteVocabItem(token, id)
 bulkImportVocab(token, unitId, rawText)  // parst "word = Wort [phrase]"-Format
 parseBulkText(rawText)                    // Parser ohne Import (für Preview)
@@ -683,6 +703,163 @@ Mobile Browser (iOS/Android) behalten `:hover`-Zustand nach Tap. Fixes:
 Wenn nur 1 Einheit vorhanden → direkt in den Spielmodus.
 Wenn mehrere Einheiten → UnitPicker zeigen. **Wichtig:** `selectedUnit` initial auf `null` setzen, nicht auf `FALLBACK[0]`.
 
+### 8. BuchstabenSalat: Non-EN Filter / Artikel-Stripping
+Der ursprüngliche Filter `v.en.split(' ').length === 1` schloss alle französischen Wörter mit Artikel aus
+(„la chaise", „le cahier" → 2 Wörter). Fix:
+- Für non-EN: Artikel aus `v.en` abziehen vor dem Split-Check:
+  ```typescript
+  v.en.replace(/^(la |le |les |l'|un |une |des |el |los |las |il |gli )/i, '').trim()
+  ```
+- Richtung in `setupQ`: für non-EN immer `enDir = true`
+  (zeige DE als Hinweis, scramble das FR/ES/IT-Hauptwort ohne Artikel)
+- Filter auf DE-Seite (`!v.de.includes(' ')`) bleibt weiterhin aktiv → DE muss Einzelwort sein
+
+---
+
+## NAS-Infrastruktur (Stand März 2026)
+
+### Docker-Setup auf Synology DS918+
+
+Zwei Docker-Compose-Projekte auf dem NAS:
+
+| Projekt | Pfad | Container |
+|---------|------|-----------|
+| `lernheld` | `/volume1/docker/lernheld/` | PocketBase (Port 8090) |
+| `lern-apps` | `/volume1/docker/lern-apps/` | nginx (Port 8080) + live-proxy (intern 3001) |
+
+**DSM Reverse Proxy:** `lernheld.synology.me` HTTPS:443 → `localhost:8080` (nginx)
+WebSocket-Header aktiv: `Upgrade: $http_upgrade` / `Connection: $connection_upgrade`
+
+### nginx-Routing
+
+```
+https://lernheld.synology.me/                    → Landing Page (index.html)
+https://lernheld.synology.me/vocabhero/          → vocabhero/index.html (Bundle)
+https://lernheld.synology.me/mathe-held/         → mathe-held/index.html (Bundle)
+https://lernheld.synology.me/franzoesisch/       → franzoesisch/index.html (Bundle)
+https://lernheld.synology.me/wort-abenteuer/     → wort-abenteuer/index.html (Bundle)
+https://lernheld.synology.me/spielecke/          → spielecke/index.html (Bundle)
+https://lernheld.synology.me/eltern-panel/       → eltern-panel/index.html (Bundle)
+https://lernheld.synology.me/_/                  → PocketBase Admin (proxy → :8090)
+https://lernheld.synology.me/api/                → PocketBase REST API (proxy → :8090)
+wss://lernheld.synology.me/live                  → live-proxy :3001 → Gemini Live API
+```
+
+Quellcode (`src/`, `node_modules/`, etc.) ist **nicht erreichbar** — nginx blockiert alles ausser den fertigen Bundles.
+
+### live-proxy
+
+- Node.js WebSocket-Proxy (`live-proxy/server.js`)
+- Empfängt Browser-WebSocket auf `/live`, leitet an Gemini Live API weiter
+- API-Key bleibt serverseitig (Env-Variable `GEMINI_API_KEY` in `.env`)
+- Health-Check: `https://lernheld.synology.me/health` → `{"status":"ok"}`
+- Gemini Live API URL: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+
+### Deploy-Workflow
+
+```
+Mac: git push → GitHub
+         ↓
+DSM Aufgabenplaner: "lern-apps update" → Ausführen
+         ↓
+git fetch origin main + git reset --hard origin/main
+         ↓
+Dateien live auf https://lernheld.synology.me
+```
+
+**Aufgabe im DSM Aufgabenplaner:**
+```bash
+# Name: lern-apps update | Benutzer: root | täglich + manuell
+git config --global --add safe.directory /volume1/docker/lern-apps
+cd /volume1/docker/lern-apps
+git fetch origin main
+git reset --hard origin/main
+```
+
+**Hinweis:** Kein Container-Neustart nötig für App-Updates — nginx liest Dateien direkt vom Volume.
+Neustart nur nötig wenn `nginx.conf`, `server.js`, `package.json` oder `Dockerfile` sich ändern.
+
+### `.env` auf dem NAS
+
+```
+# /volume1/docker/lern-apps/.env  (nicht in git)
+GEMINI_API_KEY=...
+```
+
+---
+
+## 🎙️ Feature-Plan: Live-Audio Modi für VocabHero
+
+Zwei neue Spielmodi in VocabHero, basierend auf der Gemini Live API (bidirektionales Audio-Streaming).
+
+### Architektur
+
+```
+Browser (VocabHero)
+  └── WebSocket wss://lernheld.synology.me/live
+        └── live-proxy (Node.js, Port 3001)
+              └── Gemini 2.5 Flash Native Audio (Live API)
+```
+
+### Modell
+- `gemini-2.5-flash-native-audio` via WebSocket Live API
+- Stimme: `Achird` (Friendly) — gleich wie bestehende TTS-Audios
+- KI spricht immer **Deutsch**, Vokabeln in der jeweiligen Lernsprache
+
+### Mikrofon-Button (beide Modi)
+- Mindestgrösse 64×64px, Push-to-Talk (kein Dauerzuhören)
+- Zustände: `bereit` (neutral) → `aufnahme` (rot, pulsierend) → `verarbeitung` (Ladeanimation) → `bereit`
+
+---
+
+### Modus 1: 🎤 Aussprache-Trainer
+
+**Ablauf:**
+1. KI spricht Vokabel vor
+2. Mikrofon-Button erscheint
+3. Kind drückt Button und spricht nach
+4. KI gibt kurzes ermutigendes Feedback
+5. KI entscheidet selbst ob nochmals oder weiter (max. 2–3 Versuche)
+
+**System-Prompt:**
+```
+Du bist ein geduldiger, freundlicher Sprachlehrer für Kinder im Alter von 8-14 Jahren.
+Einige Kinder haben ADHS oder Legasthenie – sei immer ermutigend, nie frustrierend.
+Sprich immer auf Deutsch.
+Deine Aufgabe: Sprich ein Wort vor, höre zu wie das Kind es nachspricht,
+und gib kurzes, freundliches Feedback.
+Entscheide selbst ob ein weiterer Versuch sinnvoll ist.
+Nach maximal 2-3 Versuchen immer positiv abschliessen und weitermachen.
+Halte Feedback kurz – maximal 1-2 Sätze.
+```
+
+---
+
+### Modus 2: 🖼️ Bild-Quiz per Stimme
+
+**Ablauf:**
+1. Bild erscheint gross und zentral
+2. KI fragt: „Was siehst du auf dem Bild?"
+3. Kind drückt Button und sagt das Wort
+4. KI wertet aus → Feedback + Punkte → nächstes Bild
+
+**KI-Verhalten:**
+- Akzeptiert ähnlich klingende Antworten (ADHS/Legasthenie-freundlich)
+- Bei Stille: einmal freundlich nachfragen, dann weitermachen
+- Wort-Kontext wird als Text im System-Prompt übergeben (KI sieht das Bild nicht direkt)
+
+**System-Prompt:**
+```
+Du bist ein freundlicher Quiz-Leiter für Kinder im Alter von 8-14 Jahren.
+Einige Kinder haben ADHS oder Legasthenie – sei immer geduldig und ermutigend.
+Sprich immer auf Deutsch.
+Zeige dem Kind ein Bild und frage was darauf zu sehen ist.
+Akzeptiere auch ähnlich klingende oder annähernd korrekte Antworten.
+Wenn das Kind nichts sagt, frage einmal freundlich nach, dann geh weiter.
+Halte alles kurz und positiv – maximal 1-2 Sätze pro Interaktion.
+Vergib Punkte und motiviere das Kind weiterzumachen.
+```
+
 ---
 
 ## Zukunftsvision / Roadmap
@@ -694,10 +871,6 @@ item_performance Collection:
 Gewichteter Picker: weight = (wrong_count + 1) / (correct_count + 2)
 → schwache Items häufiger abfragen
 ```
-
-### Weitere Sprachen
-- `vocab_units.language` Feld (`"en-de"`, `"fr-de"`, etc.)
-- Spielmodi-Labels dynamisch statt hardcoded „EN → DE"
 
 ### Quiz / Allgemeinwissen
 Neue Collections `quiz_units` + `quiz_items` (Frage, 4 Antworten, korrekte Antwort).
