@@ -31,6 +31,8 @@ services:
     build: ./live-proxy
     container_name: lernheld-live-proxy
     restart: unless-stopped
+    volumes:
+      - ./live-proxy/server.js:/app/server.js:ro   # server.js direkt mounten → Änderungen ohne Rebuild
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       # Optional: nur bestimmte Origins erlauben
