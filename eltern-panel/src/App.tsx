@@ -6,7 +6,7 @@ import {
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
-  createVocabItemWithImage, bulkImportVocab, parseBulkText,
+  createVocabItemWithImage, updateVocabItemAudio, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
 } from './pb'
 
@@ -573,8 +573,8 @@ function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: 
 
 // ─── Vocab Detail ─────────────────────────────────────────────────────────────
 
-function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
-  token: string; unit: VocabUnit;
+function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
+  token: string; unit: VocabUnit; geminiKey: string;
   onBack: () => void; onBulk: (u: VocabUnit) => void
 }) {
   const [unit, setUnit] = useState(initialUnit)
@@ -583,7 +583,10 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
   const [saving, setSaving] = useState(false)
   const [newItem, setNewItem] = useState({ en: '', de: '', type: 'word' as 'word' | 'phrase' })
   const [editInfo, setEditInfo] = useState(false)
-  const [infoForm, setInfoForm] = useState({ title: unit.title, subtitle: unit.subtitle, emoji: unit.emoji, targetUser: unit.targetUser, language: unit.language ?? 'en', active: unit.active })
+  const [infoForm, setInfoForm] = useState({ title: unit.title, subtitle: unit.subtitle, emoji: unit.emoji, targetUser: unit.targetUser, language: unit.language || 'en', active: unit.active })
+  const [audioLoadingIds, setAudioLoadingIds] = useState<Set<string>>(new Set())
+  const [bulkAudioRunning, setBulkAudioRunning] = useState(false)
+  const [bulkAudioProgress, setBulkAudioProgress] = useState(0)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -632,6 +635,46 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
       setEditInfo(false)
     } catch { alert('Speichern fehlgeschlagen') }
     finally { setSaving(false) }
+  }
+
+  async function handleGenerateAudio(item: VocabItem) {
+    if (!geminiKey || !item.id) return
+    setAudioLoadingIds(prev => new Set(prev).add(item.id!))
+    try {
+      const [audioLangBlob, audioDeBlob] = await Promise.all([
+        generateVocabAudio(geminiKey, item.en, unit.language || 'en'),
+        generateVocabAudio(geminiKey, item.de, 'de'),
+      ])
+      await updateVocabItemAudio(token, item.id!, audioLangBlob, audioDeBlob, item.en, item.de)
+      // Reload items to get fresh audio URLs
+      load()
+    } catch { alert('Audio-Generierung fehlgeschlagen') }
+    finally {
+      setAudioLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
+    }
+  }
+
+  async function handleGenerateAllAudio() {
+    if (!geminiKey) return
+    const missing = items.filter(i => !i.audioLangUrl && !i.audioDeUrl && i.id)
+    if (missing.length === 0) { alert('Alle Wörter haben bereits Audio.'); return }
+    setBulkAudioRunning(true); setBulkAudioProgress(0)
+    for (let i = 0; i < missing.length; i++) {
+      const item = missing[i]
+      setAudioLoadingIds(prev => new Set(prev).add(item.id!))
+      try {
+        const [audioLangBlob, audioDeBlob] = await Promise.all([
+          generateVocabAudio(geminiKey, item.en, unit.language || 'en'),
+          generateVocabAudio(geminiKey, item.de, 'de'),
+        ])
+        await updateVocabItemAudio(token, item.id!, audioLangBlob, audioDeBlob, item.en, item.de)
+      } catch { /* silent – weiter mit nächstem */ }
+      setAudioLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
+      setBulkAudioProgress(i + 1)
+      if (i < missing.length - 1) await new Promise(r => setTimeout(r, 500))
+    }
+    setBulkAudioRunning(false)
+    load()
   }
 
   return (
@@ -708,7 +751,16 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
       {/* Word Actions */}
       <div className="section-header">
         <h3>📝 Wörter ({items.length})</h3>
-        <button className="btn-secondary" onClick={() => onBulk(unit)}>📋 Bulk-Import</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {geminiKey && items.length > 0 && (
+            <button className="btn-secondary" onClick={handleGenerateAllAudio} disabled={bulkAudioRunning}>
+              {bulkAudioRunning
+                ? `⏳ Audio ${bulkAudioProgress}/${items.filter(i => !i.audioLangUrl && !i.audioDeUrl).length}...`
+                : '🎙️ Audio für alle'}
+            </button>
+          )}
+          <button className="btn-secondary" onClick={() => onBulk(unit)}>📋 Bulk-Import</button>
+        </div>
       </div>
 
       {/* Add Word Form */}
@@ -736,7 +788,7 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
         <div className="table-wrap word-table-wrap">
           <table className="word-table">
             <thead>
-              <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th></th></tr>
+              <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th>🔊</th><th></th></tr>
             </thead>
             <tbody>
               {items.map(item => (
@@ -758,6 +810,27 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
                       <option value="phrase">Satz</option>
                     </select>
                   </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {item.audioLangUrl && (
+                      <button className="btn-sm" title={`${item.en} abspielen`}
+                        onClick={() => new Audio(item.audioLangUrl!).play()}>🔊</button>
+                    )}
+                    {item.audioDeUrl && (
+                      <button className="btn-sm" title={`${item.de} abspielen`}
+                        onClick={() => new Audio(item.audioDeUrl!).play()} style={{ marginLeft: 2 }}>🔊 DE</button>
+                    )}
+                    {geminiKey && (
+                      <button
+                        className="btn-sm"
+                        title="Audio generieren"
+                        disabled={audioLoadingIds.has(item.id!) || bulkAudioRunning}
+                        onClick={() => handleGenerateAudio(item)}
+                        style={{ marginLeft: 2 }}
+                      >
+                        {audioLoadingIds.has(item.id!) ? '⏳' : '🎙️'}
+                      </button>
+                    )}
+                  </td>
                   <td>
                     <button className="btn-sm btn-danger" onClick={() => handleDeleteItem(item.id)}>✕</button>
                   </td>
@@ -773,13 +846,14 @@ function VocabDetail({ token, unit: initialUnit, onBack, onBulk }: {
 
 // ─── Bulk Import ──────────────────────────────────────────────────────────────
 
-function BulkImport({ token, unit, onBack }: {
-  token: string; unit: VocabUnit; onBack: (reload: boolean) => void
+function BulkImport({ token, unit, geminiKey, onBack }: {
+  token: string; unit: VocabUnit; geminiKey: string; onBack: (reload: boolean) => void
 }) {
   const [text, setText] = useState('')
   const [preview, setPreview] = useState<{ en: string; de: string; type: 'word' | 'phrase' }[]>([])
   const [showPreview, setShowPreview] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
   const [result, setResult] = useState<string>('')
 
   function handlePreview() {
@@ -789,10 +863,24 @@ function BulkImport({ token, unit, onBack }: {
   }
 
   async function handleImport() {
-    setImporting(true); setResult('')
+    setImporting(true); setResult(''); setImportProgress(0)
+    const parsed = parseBulkText(text)
     try {
-      const created = await bulkImportVocab(token, unit.id, text)
-      setResult(`✅ ${created.length} Wörter importiert!`)
+      for (let i = 0; i < parsed.length; i++) {
+        const item = parsed[i]
+        // Bild + Audio parallel generieren (silent fail wenn kein Key)
+        const [imgResult, audioLangBlob, audioDeBlob] = geminiKey
+          ? await Promise.all([
+              generateVocabImage(geminiKey, item.en, item.de),
+              generateVocabAudio(geminiKey, item.en, unit.language || 'en'),
+              generateVocabAudio(geminiKey, item.de, 'de'),
+            ])
+          : [{ blob: null, error: null }, null, null]
+        await createVocabItemWithImage(token, unit.id, item.en, item.de, item.type, imgResult.blob, audioLangBlob, audioDeBlob)
+        setImportProgress(i + 1)
+        if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 500))
+      }
+      setResult(`✅ ${parsed.length} Wörter importiert!`)
       setText(''); setPreview([]); setShowPreview(false)
     } catch {
       setResult('❌ Fehler beim Import')
@@ -835,7 +923,9 @@ function BulkImport({ token, unit, onBack }: {
           </button>
           {showPreview && preview.length > 0 && (
             <button className="btn-primary" onClick={handleImport} disabled={importing}>
-              {importing ? `⏳ Importiere...` : `📥 ${preview.length} Wörter importieren`}
+              {importing
+                ? `⏳ ${importProgress}/${preview.length} Bild & Audio...`
+                : `📥 ${preview.length} Wörter${geminiKey ? ' + Bilder & Audio' : ''} importieren`}
             </button>
           )}
         </div>
@@ -883,6 +973,81 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   const arr = new Uint8Array(bytes.length)
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
   return new Blob([arr], { type: mimeType })
+}
+
+// ─── PCM → WAV Konvertierung ──────────────────────────────────────────────────
+
+function pcmToWav(pcmBase64: string, sampleRate = 24000, channels = 1, bitsPerSample = 16): Blob {
+  const pcmBytes = Uint8Array.from(atob(pcmBase64), c => c.charCodeAt(0))
+  const headerSize = 44
+  const buffer = new ArrayBuffer(headerSize + pcmBytes.byteLength)
+  const view = new DataView(buffer)
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)) }
+  const byteRate = sampleRate * channels * bitsPerSample / 8
+  const blockAlign = channels * bitsPerSample / 8
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + pcmBytes.byteLength, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)          // PCM
+  view.setUint16(22, channels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, bitsPerSample, true)
+  writeStr(36, 'data')
+  view.setUint32(40, pcmBytes.byteLength, true)
+  new Uint8Array(buffer, 44).set(pcmBytes)
+  return new Blob([buffer], { type: 'audio/wav' })
+}
+
+// ─── Audio-Generierung via Gemini TTS ────────────────────────────────────────
+
+// Hinweis: Gemini TTS erkennt die Sprache automatisch aus dem Input-Text.
+// Das speechConfig-Objekt kennt kein languageCode-Feld — Sprachsteuerung
+// erfolgt ausschliesslich über den Prompt (Accent-Direktive).
+const LANG_ACCENTS: Record<string, string> = {
+  en: 'Clear, neutral English accent',
+  fr: 'Native French speaker from France (Parisian accent)',
+  es: 'Native Spanish speaker from Spain',
+  it: 'Native Italian speaker from Italy',
+  de: 'Native German speaker from Germany',
+}
+
+async function generateVocabAudio(apiKey: string, word: string, lang = 'en'): Promise<Blob | null> {
+  const accent = LANG_ACCENTS[lang] ?? LANG_ACCENTS['en']
+  const prompt = `# AUDIO PROFILE: Friendly Language Teacher
+### DIRECTOR'S NOTES
+Style: Warm, clear and encouraging – like a patient primary school teacher
+Pacing: Slow and deliberate, each word pronounced clearly once
+Accent: ${accent}
+
+### TRANSCRIPT
+${word}`
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Achird' } },
+            },
+          },
+        }),
+      }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const pcm: string | undefined = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
+    if (!pcm) return null
+    return pcmToWav(pcm)
+  } catch { return null }
 }
 
 // ─── OCR via Gemini Vision ────────────────────────────────────────────────────
@@ -1004,6 +1169,8 @@ interface WizardWord {
   type: 'word' | 'phrase'
   imageBlob: Blob | null
   imagePreview: string | null
+  audioLangBlob: Blob | null
+  audioDeBlob: Blob | null
   status: 'pending' | 'generating' | 'done' | 'failed'
   errorMsg?: string
 }
@@ -1055,7 +1222,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       })
       setPhotoPreview(`data:image/jpeg;base64,${base64}`)
       const extracted = await ocrVocabFromPhoto(geminiKey, base64)
-      setWords(extracted.map(w => ({ ...w, type: (w.type ?? 'word') as 'word' | 'phrase', imageBlob: null, imagePreview: null, status: 'pending' as const })))
+      setWords(extracted.map(w => ({ ...w, type: (w.type ?? 'word') as 'word' | 'phrase', imageBlob: null, imagePreview: null, audioLangBlob: null, audioDeBlob: null, status: 'pending' as const })))
       setStep('review')
     } catch (err: any) {
       setOcrError(err.message || 'OCR fehlgeschlagen')
@@ -1067,7 +1234,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     setWords(w => w.map((word, j) => j === i ? { ...word, [field]: val } : word))
   }
   function addWord() {
-    setWords(w => [...w, { en: '', de: '', type: 'word', imageBlob: null, imagePreview: null, status: 'pending' }])
+    setWords(w => [...w, { en: '', de: '', type: 'word', imageBlob: null, imagePreview: null, audioLangBlob: null, audioDeBlob: null, status: 'pending' }])
   }
 
   async function handleGenerate() {
@@ -1078,18 +1245,25 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     for (let i = 0; i < updated.length; i++) {
       updated[i] = { ...updated[i], status: 'generating' }
       setWords([...updated])
-      const { blob, error } = await generateVocabImage(geminiKey, updated[i].en, updated[i].de)
+      // Bild + beide Audios parallel generieren
+      const [imgResult, audioLangBlob, audioDeBlob] = await Promise.all([
+        generateVocabImage(geminiKey, updated[i].en, updated[i].de),
+        generateVocabAudio(geminiKey, updated[i].en, unitForm.language || 'en'),
+        generateVocabAudio(geminiKey, updated[i].de, 'de'),
+      ])
       updated[i] = {
         ...updated[i],
-        imageBlob: blob,
-        imagePreview: blob ? URL.createObjectURL(blob) : null,
-        status: blob ? 'done' : 'failed',
-        errorMsg: error ?? undefined,
+        imageBlob: imgResult.blob,
+        imagePreview: imgResult.blob ? URL.createObjectURL(imgResult.blob) : null,
+        audioLangBlob,
+        audioDeBlob,
+        status: imgResult.blob ? 'done' : 'failed',
+        errorMsg: imgResult.error ?? undefined,
       }
       setWords([...updated])
       setGenProgress(i + 1)
-      // Small delay to avoid rate limiting
-      if (i < updated.length - 1) await new Promise(r => setTimeout(r, 300))
+      // Rate-limit Pause zwischen Wörtern
+      if (i < updated.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     setGenRunning(false)
     setGenDone(true)
@@ -1106,7 +1280,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       const validWords = words.filter(w => w.en.trim() && w.de.trim())
       for (let i = 0; i < validWords.length; i++) {
         const w = validWords[i]
-        await createVocabItemWithImage(token, unit.id, w.en, w.de, w.type, w.imageBlob)
+        await createVocabItemWithImage(token, unit.id, w.en, w.de, w.type, w.imageBlob, w.audioLangBlob, w.audioDeBlob)
         setSaveProgress(i + 1)
       }
       setSaveDone(true)
@@ -1242,7 +1416,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
           <div className="form-actions" style={{ marginTop: 16 }}>
             <button className="btn-primary" onClick={handleGenerate}
               disabled={words.length === 0 || !unitForm.title.trim()}>
-              🎨 Bilder generieren →
+              🎨 Bilder &amp; Audio generieren →
             </button>
           </div>
         </div>
@@ -1253,7 +1427,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
         <div className="form-card">
           {genRunning && (
             <div style={{ marginBottom: 20 }}>
-              <p style={{ marginBottom: 8 }}>⏳ Generiere Bild {genProgress + 1} von {words.length}...</p>
+              <p style={{ marginBottom: 8 }}>⏳ Generiere Bild &amp; Audio {genProgress + 1} von {words.length}...</p>
               <div className="progress-bar-wrap">
                 <div className="progress-bar-fill" style={{ width: `${(genProgress / words.length) * 100}%` }} />
               </div>
@@ -1400,6 +1574,7 @@ export default function App() {
           <VocabDetail
             token={parent.token}
             unit={detailVocabUnit}
+            geminiKey={geminiKey}
             onBack={() => { setDetailVocabUnit(null); setScreen('vocab-list') }}
             onBulk={u => { setBulkVocabUnit(u); setScreen('vocab-bulk') }}
           />
@@ -1409,6 +1584,7 @@ export default function App() {
           <BulkImport
             token={parent.token}
             unit={bulkVocabUnit}
+            geminiKey={geminiKey}
             onBack={(reload) => {
               if (reload && bulkVocabUnit) setDetailVocabUnit(bulkVocabUnit)
               setBulkVocabUnit(null)
@@ -1426,7 +1602,7 @@ export default function App() {
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.5</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.7.2</div>
     </div>
   )
 }

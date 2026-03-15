@@ -52,6 +52,8 @@ export interface VocabItem {
   en: string
   de: string
   type: 'word' | 'phrase'
+  audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
+  audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
 }
 
 export interface ActivityEntry {
@@ -235,7 +237,7 @@ function mapVocabUnit(r: any): VocabUnit {
     subtitle: r.subtitle ?? '',
     emoji: r.emoji ?? '📚',
     targetUser: r.target_user ?? '',
-    language: r.language ?? 'en',
+    language: r.language || 'en',
     active: r.active !== false,
     sortOrder: r.sort_order ?? 0,
     itemCount: r.itemCount,
@@ -313,6 +315,8 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
   return (data.items ?? []).map((r: any) => ({
     id: r.id, unitId: r.unit,
     en: r.en, de: r.de, type: r.type ?? 'word',
+    audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
+    audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
   }))
 }
 
@@ -377,7 +381,9 @@ export async function createVocabItemWithImage(
   en: string,
   de: string,
   type: 'word' | 'phrase',
-  imageBlob: Blob | null
+  imageBlob: Blob | null,
+  audioLangBlob?: Blob | null,
+  audioDeBlob?: Blob | null,
 ): Promise<VocabItem> {
   const formData = new FormData()
   formData.append('unit', unitId)
@@ -386,6 +392,12 @@ export async function createVocabItemWithImage(
   formData.append('type', type)
   if (imageBlob) {
     formData.append('image', imageBlob, `${en.trim().replace(/\s+/g, '_')}.jpg`)
+  }
+  if (audioLangBlob) {
+    formData.append('audio_lang', audioLangBlob, `${en.trim().replace(/\s+/g, '_')}_lang.wav`)
+  }
+  if (audioDeBlob) {
+    formData.append('audio_de', audioDeBlob, `${de.trim().replace(/\s+/g, '_')}_de.wav`)
   }
   // No Content-Type header — browser sets multipart boundary automatically
   const res = await fetch(`${PB_URL}/api/collections/vocab_items/records`, {
@@ -396,6 +408,29 @@ export async function createVocabItemWithImage(
   if (!res.ok) throw new Error('Wort speichern fehlgeschlagen')
   const r = await res.json()
   return { id: r.id, unitId: r.unit, en: r.en, de: r.de, type: r.type }
+}
+
+export async function updateVocabItemAudio(
+  token: string,
+  id: string,
+  audioLangBlob: Blob | null,
+  audioDeBlob: Blob | null,
+  en: string,
+  de: string,
+): Promise<void> {
+  const formData = new FormData()
+  if (audioLangBlob) {
+    formData.append('audio_lang', audioLangBlob, `${en.trim().replace(/\s+/g, '_')}_lang.wav`)
+  }
+  if (audioDeBlob) {
+    formData.append('audio_de', audioDeBlob, `${de.trim().replace(/\s+/g, '_')}_de.wav`)
+  }
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  if (!res.ok) throw new Error('Audio speichern fehlgeschlagen')
 }
 
 export function parseBulkText(rawText: string): { en: string; de: string; type: 'word' | 'phrase' }[] {
