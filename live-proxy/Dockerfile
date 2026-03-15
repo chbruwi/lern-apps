@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Abhängigkeiten zuerst (Layer-Caching)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # App-Code
 COPY server.js .
