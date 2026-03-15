@@ -24,7 +24,7 @@ const PORT = parseInt(process.env.PORT || '3001', 10)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
 const GEMINI_WS_URL =
-  'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
+  'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent'
 
 // Erlaubte Origins – leer = alle erlaubt (für Heimnetz OK)
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
