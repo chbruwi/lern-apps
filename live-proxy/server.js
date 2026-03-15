@@ -83,6 +83,15 @@ wss.on('connection', (clientWs, req) => {
 
   // --- Client → Gemini ---
   clientWs.on('message', (data, isBinary) => {
+    // Setup-Nachricht loggen (hilft beim Debuggen von 1008-Fehlern)
+    if (!isBinary) {
+      try {
+        const parsed = JSON.parse(data.toString())
+        if (parsed.setup) {
+          console.log(`[proxy] Setup-Paket → Gemini | Modell: ${parsed.setup.model}`)
+        }
+      } catch (_) {}
+    }
     if (geminiReady) {
       geminiWs.send(data, { binary: isBinary })
     } else {
@@ -102,6 +111,18 @@ wss.on('connection', (clientWs, req) => {
 
   // --- Gemini → Client ---
   geminiWs.on('message', (data, isBinary) => {
+    // Erste Nachricht von Gemini loggen (hilft beim Debuggen)
+    if (!isBinary) {
+      try {
+        const parsed = JSON.parse(data.toString())
+        if (parsed.error) {
+          console.error(`[proxy] Gemini Fehler-Nachricht: ${JSON.stringify(parsed.error)}`)
+        } else {
+          const keys = Object.keys(parsed)
+          console.log(`[proxy] Gemini Nachricht: ${keys.join(', ')}`)
+        }
+      } catch (_) {}
+    }
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(data, { binary: isBinary })
     }
@@ -109,14 +130,16 @@ wss.on('connection', (clientWs, req) => {
 
   // --- Verbindungsabbau ---
   clientWs.on('close', (code, reason) => {
-    console.log(`[proxy] Client getrennt | Code: ${code}`)
+    const reasonStr = reason && reason.length > 0 ? reason.toString() : '(kein Grund)'
+    console.log(`[proxy] Client getrennt | Code: ${code} | Grund: ${reasonStr}`)
     if (geminiWs.readyState === WebSocket.OPEN || geminiWs.readyState === WebSocket.CONNECTING) {
       geminiWs.close()
     }
   })
 
   geminiWs.on('close', (code, reason) => {
-    console.log(`[proxy] Gemini getrennt | Code: ${code}`)
+    const reasonStr = reason && reason.length > 0 ? reason.toString() : '(kein Grund)'
+    console.log(`[proxy] Gemini getrennt | Code: ${code} | Grund: ${reasonStr}`)
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.close(1001, 'Upstream closed')
     }
