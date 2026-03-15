@@ -853,8 +853,8 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
       } catch { /* ignoriere Parse-Fehler */ }
     }
 
-    ws.onerror = () => { setP('error'); setErrMsg('Verbindungsfehler. Bitte erneut versuchen.') }
-    ws.onclose = () => { if (!closingRef.current && phaseRef.current !== 'done') { setP('error'); setErrMsg('Verbindung getrennt.') } }
+    ws.onerror = (e) => { console.error('[live] WS error', e); setP('error'); setErrMsg('Verbindungsfehler. Bitte erneut versuchen.') }
+    ws.onclose = (e) => { console.warn('[live] WS closed', e.code, e.reason); if (!closingRef.current && phaseRef.current !== 'done') { setP('error'); setErrMsg(`Verbindung getrennt (Code ${e.code}${e.reason ? ': ' + e.reason : ''}).`) } }
 
     return () => { closingRef.current = true; ws.close(); stopRecRef.current?.() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
