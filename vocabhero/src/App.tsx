@@ -119,6 +119,33 @@ function Confetti({ active }: { active: boolean }) {
 }
 
 // ============================================================
+// SPEAKER BUTTON
+// ============================================================
+
+function SpeakerButton({ url, label }: { url?: string; label?: string }) {
+  const [playing, setPlaying] = useState(false)
+  if (!url) return null
+  function handlePlay(e: React.MouseEvent) {
+    e.stopPropagation()  // verhindert Karteikarten-Flip beim Klick
+    const a = new Audio(url)
+    setPlaying(true)
+    a.onended = () => setPlaying(false)
+    a.onerror = () => setPlaying(false)
+    a.play().catch(() => setPlaying(false))
+  }
+  return (
+    <button
+      className={`speaker-btn ${playing ? 'speaker-playing' : ''}`}
+      onClick={handlePlay}
+      title={label ? `${label} abspielen` : 'Abspielen'}
+      aria-label="Abspielen"
+    >
+      {playing ? '🔉' : '🔊'}
+    </button>
+  )
+}
+
+// ============================================================
 // MODULE 1: FLIP CARDS
 // ============================================================
 
@@ -191,6 +218,7 @@ function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
                 style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
             )}
             <span className="flip-text">{front}</span>
+            <SpeakerButton url={showEn ? card.audioLangUrl : card.audioDeUrl} label={front} />
           </div>
           <div className="flip-face flip-back">
             <span className="flip-lang">{showEn ? 'DE' : langCode}</span>
@@ -199,6 +227,7 @@ function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
                 style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, marginBottom: 6 }} />
             )}
             <span className="flip-text">{back}</span>
+            <SpeakerButton url={showEn ? card.audioDeUrl : card.audioLangUrl} label={back} />
           </div>
         </div>
       </div>
@@ -436,6 +465,7 @@ function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
             style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, marginBottom: 4 }} />
         )}
         <span className="quiz-word">{questionText}</span>
+        <SpeakerButton url={showEn ? q.audioLangUrl : q.audioDeUrl} label={questionText} />
       </div>
 
       <div className="quiz-options">
@@ -460,6 +490,17 @@ function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
 // MODULE 4: BUCHSTABEN-SALAT
 // ============================================================
 
+// Strip leading articles for non-EN languages so the scramble is a clean single word
+// e.g. "la chaise" → "chaise", "le cahier" → "cahier"
+function stripArticle(word: string): string {
+  return word.replace(/^(la |le |les |l'|l'|un |une |des |el |los |las |il |gli )/i, '').trim()
+}
+
+function getScrambleTarget(item: VocabItem, showEn: boolean, lang: string): string {
+  if (showEn) return lang !== 'en' ? stripArticle(item.en) : item.en
+  return item.de
+}
+
 function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
@@ -473,26 +514,36 @@ function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[];
 
   const setupQ = useCallback((qs: VocabItem[], i: number) => {
     if (i >= qs.length) return
-    const enDir = Math.random() > 0.5
+    // EN: random direction; non-EN: always show DE as clue, scramble the source word (article stripped)
+    const enDir = lang === 'en' ? Math.random() > 0.5 : true
     setShowEn(enDir)
-    const answer = enDir ? qs[i].en : qs[i].de
+    const answer = getScrambleTarget(qs[i], enDir, lang)
     const letters = answer.split('')
     const mixed = shuffle(letters)
     setScrambled(mixed)
     setUserAnswer([])
     setAvailable(mixed.map(() => true))
     setFeedback(null)
-  }, [])
+  }, [lang])
 
   const init = useCallback(() => {
-    const wordOnly = vocab.filter(v => v.type === 'word' && v.en.split(' ').length === 1 && v.de.split(/[,;]/).length === 1 && !v.de.includes(' '))
+    const wordOnly = vocab.filter(v => {
+      if (v.type !== 'word') return false
+      if (lang === 'en') {
+        return v.en.split(' ').length === 1 && v.de.split(/[,;]/).length === 1 && !v.de.includes(' ')
+      } else {
+        // For FR/ES/IT: strip article, result must be a single word; DE is just the clue
+        const stripped = stripArticle(v.en)
+        return stripped.split(' ').length === 1 && v.de.split(/[,;]/).length === 1
+      }
+    })
     const qs = pickRandom(wordOnly, 8)
     setQuestions(qs)
     setIdx(0)
     setScore(0)
     setShowConfetti(false)
     setupQ(qs, 0)
-  }, [setupQ, vocab])
+  }, [setupQ, vocab, lang])
 
   useEffect(() => { init() }, [init])
 
@@ -505,7 +556,7 @@ function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[];
     setAvailable(newAvail)
 
     if (newAnswer.length === scrambled.length) {
-      const target = showEn ? questions[idx].en : questions[idx].de
+      const target = getScrambleTarget(questions[idx], showEn, lang)
       if (newAnswer.join('') === target) {
         setFeedback('correct')
         setScore(s => s + 1)
@@ -574,6 +625,7 @@ function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[];
             style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 8, margin: '6px 0' }} />
         )}
         <span className="scramble-word">{clue}</span>
+        <SpeakerButton url={showEn ? q.audioDeUrl : q.audioLangUrl} label={clue} />
       </div>
 
       <div className={`scramble-answer ${feedback === 'correct' ? 'ans-correct' : feedback === 'wrong' ? 'ans-wrong' : ''}`}>
@@ -689,16 +741,236 @@ function UnitPicker({ units, onSelect }: { units: Unit[]; onSelect: (unit: Unit)
 }
 
 // ============================================================
+// GEMINI LIVE API – AUSSPRACHE-TRAINER
+// ============================================================
+
+const LIVE_WS_URL = 'wss://lernheld.synology.me/live'
+
+const AUSSPRACHE_PROMPT = `Du bist ein geduldiger, freundlicher Sprachlehrer für Kinder im Alter von 8-14 Jahren.
+Einige Kinder haben ADHS oder Legasthenie – sei immer ermutigend, nie frustrierend.
+Sprich immer auf Deutsch, ausser wenn du das Vokabular in der Lernsprache vorliest.
+Ablauf: Sprich das Wort klar in der Lernsprache vor. Höre dem Kind zu. Gib kurzes freundliches Feedback (maximal 1-2 Sätze). Entscheide selbst ob ein weiterer Versuch sinnvoll ist – maximal 2-3 Versuche. Schliesse immer positiv ab.`
+
+function f32ToBase64Pcm(buf: Float32Array): string {
+  const i16 = new Int16Array(buf.length)
+  for (let i = 0; i < buf.length; i++) {
+    const s = Math.max(-1, Math.min(1, buf[i]))
+    i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+  }
+  const bytes = new Uint8Array(i16.buffer)
+  let b = ''; for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i])
+  return btoa(b)
+}
+
+function buildPcmWav(chunks: string[], rate = 24000): Blob {
+  const parts = chunks.map(c => Uint8Array.from(atob(c), x => x.charCodeAt(0)))
+  const len = parts.reduce((s, p) => s + p.length, 0)
+  const pcm = new Uint8Array(len); let off = 0
+  for (const p of parts) { pcm.set(p, off); off += p.length }
+  const h = new ArrayBuffer(44); const v = new DataView(h)
+  const wr = (pos: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(pos + i, s.charCodeAt(i)) }
+  wr(0, 'RIFF'); v.setUint32(4, 36 + pcm.length, true)
+  wr(8, 'WAVE'); wr(12, 'fmt '); v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true)
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true)
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true)
+  wr(36, 'data'); v.setUint32(40, pcm.length, true)
+  return new Blob([h, pcm], { type: 'audio/wav' })
+}
+
+type TrainerPhase = 'connecting' | 'intro' | 'mic-ready' | 'recording' | 'processing' | 'feedback' | 'done' | 'error'
+
+function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
+  vocab: VocabItem[]; lang: string; onScore: (n: number, mode?: string) => void; onBack: () => void
+}) {
+  const [phase, setPhase] = useState<TrainerPhase>('connecting')
+  const [wordIdx, setWordIdx] = useState(0)
+  const [errMsg, setErrMsg] = useState('')
+
+  const wsRef = useRef<WebSocket | null>(null)
+  const chunksRef = useRef<string[]>([])
+  const stopRecRef = useRef<(() => void) | null>(null)
+  const phaseRef = useRef<TrainerPhase>('connecting')
+  const wordIdxRef = useRef(0)
+  const scoreRef = useRef(0)
+  const closingRef = useRef(false)
+  const sendWordRef = useRef<((idx: number) => void) | null>(null)
+
+  const setP = (p: TrainerPhase) => { phaseRef.current = p; setPhase(p) }
+  const langName = getLangLabel(lang).name
+  const words = vocab.filter(v => v.en && v.de)
+
+  useEffect(() => {
+    if (words.length === 0) { setP('done'); return }
+    const ws = new WebSocket(LIVE_WS_URL)
+    wsRef.current = ws
+
+    const sendWord = (idx: number) => {
+      const word = words[idx]; if (!word) return
+      ws.send(JSON.stringify({
+        clientContent: {
+          turns: [{ role: 'user', parts: [{ text: `Sprich das Wort "${word.en}" auf ${langName} vor. Auf Deutsch bedeutet es "${word.de}".` }] }],
+          turnComplete: true
+        }
+      }))
+      wordIdxRef.current = idx; setWordIdx(idx); setP('intro')
+    }
+    sendWordRef.current = sendWord
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        setup: {
+          model: 'models/gemini-2.5-flash-native-audio',
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Achird' } } }
+          },
+          systemInstruction: { parts: [{ text: AUSSPRACHE_PROMPT }] }
+        }
+      }))
+    }
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data)
+        if (msg.setupComplete) { sendWord(0); return }
+        if (msg.serverContent?.modelTurn?.parts) {
+          for (const p of msg.serverContent.modelTurn.parts) {
+            if (p.inlineData?.data) chunksRef.current.push(p.inlineData.data)
+          }
+        }
+        if (msg.serverContent?.turnComplete) {
+          const chunks = [...chunksRef.current]; chunksRef.current = []
+          if (chunks.length > 0) {
+            const blob = buildPcmWav(chunks, 24000)
+            const url = URL.createObjectURL(blob)
+            const audio = new Audio(url)
+            audio.onended = () => URL.revokeObjectURL(url)
+            audio.play().catch(console.error)
+          }
+          setP(phaseRef.current === 'intro' ? 'mic-ready' : 'feedback')
+        }
+      } catch { /* ignoriere Parse-Fehler */ }
+    }
+
+    ws.onerror = () => { setP('error'); setErrMsg('Verbindungsfehler. Bitte erneut versuchen.') }
+    ws.onclose = () => { if (!closingRef.current && phaseRef.current !== 'done') { setP('error'); setErrMsg('Verbindung getrennt.') } }
+
+    return () => { closingRef.current = true; ws.close(); stopRecRef.current?.() }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleMicDown = async () => {
+    if (phaseRef.current !== 'mic-ready' && phaseRef.current !== 'feedback') return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const ctx = new AudioContext({ sampleRate: 16000 })
+      const src = ctx.createMediaStreamSource(stream)
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      const proc = ctx.createScriptProcessor(4096, 1, 1)
+      wsRef.current?.send(JSON.stringify({ realtimeInput: { activityStart: {} } }))
+      proc.onaudioprocess = (e) => {
+        const b64 = f32ToBase64Pcm(e.inputBuffer.getChannelData(0))
+        wsRef.current?.send(JSON.stringify({ realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }] } }))
+      }
+      src.connect(proc); proc.connect(ctx.destination); setP('recording')
+      stopRecRef.current = () => { proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); ctx.close(); stopRecRef.current = null }
+    } catch { setErrMsg('Mikrofon nicht verfügbar. Bitte Berechtigung erteilen.'); setP('error') }
+  }
+
+  const handleMicUp = () => {
+    if (phaseRef.current !== 'recording') return
+    stopRecRef.current?.()
+    wsRef.current?.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }))
+    setP('processing')
+  }
+
+  const handleNext = () => {
+    const next = wordIdxRef.current + 1
+    scoreRef.current += 1
+    if (next >= words.length) {
+      closingRef.current = true; wsRef.current?.close()
+      setP('done'); onScore(scoreRef.current * 2, 'pronunciation')
+    } else {
+      sendWordRef.current?.(next)
+    }
+  }
+
+  const cur = words[wordIdx]
+
+  if (phase === 'done') return (
+    <div className="content" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+      <div style={{ fontSize: '4rem', marginBottom: '0.5rem' }}>🎉</div>
+      <h2>Super gemacht!</h2>
+      <p style={{ color: 'var(--text-dim)' }}>{words.length} Wörter geübt</p>
+      <button className="btn-primary" style={{ marginTop: '1.5rem', fontFamily: 'var(--font-main)' }} onClick={onBack}>← Zurück zum Menü</button>
+    </div>
+  )
+
+  if (phase === 'error') return (
+    <div className="content" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+      <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>😕</div>
+      <p>{errMsg}</p>
+      <button className="btn-secondary" style={{ marginTop: '1rem', fontFamily: 'var(--font-main)' }} onClick={onBack}>← Zurück</button>
+    </div>
+  )
+
+  return (
+    <div className="content">
+      <Header title="🎤 Aussprache" onBack={onBack} right={`${wordIdx + 1} / ${words.length}`} />
+
+      <div style={{ textAlign: 'center', padding: '1.5rem 1rem 1rem' }}>
+        {cur?.imageUrl && (
+          <img src={cur.imageUrl} alt={cur.en}
+            style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 16, display: 'block', margin: '0 auto 1rem' }} />
+        )}
+        <p style={{ fontSize: '2rem', fontWeight: 700, margin: '0 0 0.25rem', fontFamily: 'var(--font-main)' }}>{cur?.en}</p>
+        <p style={{ color: 'var(--text-dim)', margin: 0 }}>{cur?.de}</p>
+      </div>
+
+      <div style={{ textAlign: 'center', minHeight: '2.5rem', marginBottom: '1.5rem', fontFamily: 'var(--font-main)' }}>
+        {phase === 'connecting' && <p style={{ color: 'var(--text-dim)' }}>🔌 Verbinde mit KI...</p>}
+        {phase === 'intro'      && <p style={{ color: 'var(--text-dim)' }}>🔊 KI spricht vor...</p>}
+        {phase === 'mic-ready'  && <p>👇 Halte den Button und sprich nach!</p>}
+        {phase === 'recording'  && <p style={{ color: '#ef4444', fontWeight: 600 }}>🔴 Aufnahme läuft...</p>}
+        {phase === 'processing' && <p style={{ color: 'var(--text-dim)' }}>⏳ KI wertet aus...</p>}
+        {phase === 'feedback'   && <p style={{ color: 'var(--text-dim)' }}>🔊 Feedback...</p>}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+        {(phase === 'mic-ready' || phase === 'recording' || phase === 'feedback') && (
+          <button
+            className={`mic-btn${phase === 'recording' ? ' mic-btn--active' : ''}`}
+            onMouseDown={handleMicDown}
+            onMouseUp={handleMicUp}
+            onMouseLeave={handleMicUp}
+            onTouchStart={e => { e.preventDefault(); handleMicDown() }}
+            onTouchEnd={e => { e.preventDefault(); handleMicUp() }}
+          >
+            🎙️
+          </button>
+        )}
+        {phase === 'feedback' && (
+          <button className="btn-secondary" style={{ fontFamily: 'var(--font-main)' }} onClick={handleNext}>
+            Weiter →
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 
-type View = 'menu' | 'flip' | 'match' | 'speed' | 'scramble'
+type View = 'menu' | 'flip' | 'match' | 'speed' | 'scramble' | 'pronunciation'
 
 const GAMES = [
-  { id: 'flip' as View, title: 'Karteikarten', emoji: '🃏', desc: 'Flip & learn', gradient: 'linear-gradient(135deg, #f472b6, #e879f9)' },
-  { id: 'match' as View, title: 'Match-It', emoji: '🔗', desc: 'Paare verbinden', gradient: 'linear-gradient(135deg, #60a5fa, #818cf8)' },
-  { id: 'speed' as View, title: 'Speed-Quiz', emoji: '⚡', desc: 'Schnell antworten', gradient: 'linear-gradient(135deg, #fbbf24, #f97316)' },
-  { id: 'scramble' as View, title: 'Buchstaben-Salat', emoji: '🔤', desc: 'Wörter zusammensetzen', gradient: 'linear-gradient(135deg, #34d399, #2dd4bf)' },
+  { id: 'flip' as View,         title: 'Karteikarten',    emoji: '🃏', desc: 'Flip & learn',           gradient: 'linear-gradient(135deg, #f472b6, #e879f9)' },
+  { id: 'match' as View,        title: 'Match-It',        emoji: '🔗', desc: 'Paare verbinden',        gradient: 'linear-gradient(135deg, #60a5fa, #818cf8)' },
+  { id: 'speed' as View,        title: 'Speed-Quiz',      emoji: '⚡', desc: 'Schnell antworten',      gradient: 'linear-gradient(135deg, #fbbf24, #f97316)' },
+  { id: 'scramble' as View,     title: 'Buchstaben-Salat',emoji: '🔤', desc: 'Wörter zusammensetzen',  gradient: 'linear-gradient(135deg, #34d399, #2dd4bf)' },
+  { id: 'pronunciation' as View,title: 'Aussprache',      emoji: '🎤', desc: 'Mit KI üben',            gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)' },
 ]
 
 function App() {
@@ -843,10 +1115,11 @@ function App() {
           <span className="top-score">🪙 {coins}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip' && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'match' && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'speed' && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'scramble' && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'flip'         && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'match'        && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'speed'        && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'scramble'     && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'pronunciation'&& <AusspracheTrainer vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
       </div>
     )
   }

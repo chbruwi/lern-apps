@@ -211,6 +211,18 @@ body {
 
 .quiz-score { text-align: center; margin-top: 16px; font-weight: 600; color: var(--text2); }
 
+/* SPEAKER BUTTON */
+.speaker-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1.5px solid var(--border); border-radius: 50%;
+  width: 36px; height: 36px; font-size: 1rem; cursor: pointer;
+  margin-top: 8px; font-family: 'Outfit', sans-serif;
+  transition: border-color 0.15s, background 0.15s;
+}
+.speaker-btn:hover { border-color: var(--purple); background: #faf5ff; }
+.speaker-btn.speaker-playing { border-color: var(--purple); background: #ede9fe; animation: pulse 0.6s infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+
 /* BUCHSTABEN-SALAT */
 .scramble-clue {
   text-align: center; padding: 20px; border-radius: var(--radius);
@@ -457,3 +469,33 @@ body {
   transition: all 0.2s;
 }
 .unit-switch-btn:hover { background: rgba(139,92,246,0.06); border-color: var(--purple); }
+
+/* ── Mikrofon-Button (Aussprache-Trainer) ─────────────────── */
+.mic-btn {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 3px solid var(--purple);
+  background: white;
+  font-size: 2.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+  touch-action: none;
+  user-select: none;
+  font-family: var(--font-main);
+}
+.mic-btn:hover { background: rgba(139,92,246,0.06); transform: scale(1.04); }
+.mic-btn--active {
+  background: #fee2e2;
+  border-color: #ef4444;
+  transform: scale(0.96);
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  70%  { box-shadow: 0 0 0 18px rgba(239,68,68,0); }
+  100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+}
