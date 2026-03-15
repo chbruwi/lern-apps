@@ -1,0 +1,16 @@
+services:
+  vocabhero-proxy:
+    build: .
+    container_name: vocabhero-proxy
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Optional: nur bestimmte Origins erlauben
+      # - ALLOWED_ORIGINS=https://chbruwi.github.io,http://localhost:5175
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
