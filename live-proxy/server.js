@@ -44,12 +44,41 @@ if (!GEMINI_API_KEY) {
 // HTTP-Server (Health-Check + WebSocket-Upgrade)
 // ---------------------------------------------------------------------------
 
+const https = require('https')
+
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }))
     return
   }
+
+  // Diagnose: welche Modelle unterstützen bidiGenerateContent?
+  if (req.url === '/list-models') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}&pageSize=100`
+    https.get(url, (apiRes) => {
+      let data = ''
+      apiRes.on('data', chunk => { data += chunk })
+      apiRes.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          const liveModels = (parsed.models || [])
+            .filter(m => (m.supportedGenerationMethods || []).includes('bidiGenerateContent'))
+            .map(m => ({ name: m.name, displayName: m.displayName }))
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ liveModels, total: liveModels.length }, null, 2))
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: e.message, raw: data.substring(0, 1000) }))
+        }
+      })
+    }).on('error', (e) => {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: e.message }))
+    })
+    return
+  }
+
   res.writeHead(404)
   res.end()
 })
