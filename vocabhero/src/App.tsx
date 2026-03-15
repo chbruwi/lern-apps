@@ -820,7 +820,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
     ws.onopen = () => {
       ws.send(JSON.stringify({
         setup: {
-          model: 'models/gemini-2.5-flash-native-audio',
+          model: 'models/gemini-2.0-flash-exp',
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Achird' } } }
