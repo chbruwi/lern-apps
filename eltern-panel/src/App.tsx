@@ -1025,12 +1025,15 @@ Accent: ${accent}
 
 ### TRANSCRIPT
 ${word}`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30_000) // 30s Timeout
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -1048,6 +1051,7 @@ ${word}`
     if (!pcm) return null
     return pcmToWav(pcm)
   } catch { return null }
+  finally { clearTimeout(timeout) }
 }
 
 // ─── OCR via Gemini Vision ────────────────────────────────────────────────────
