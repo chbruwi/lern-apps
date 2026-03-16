@@ -825,6 +825,9 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
             responseModalities: ['AUDIO'],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } }
           },
+          realtimeInputConfig: {
+            automaticActivityDetection: { disabled: true }
+          },
           systemInstruction: { parts: [{ text: AUSSPRACHE_PROMPT }] }
         }
       }))
