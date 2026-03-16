@@ -893,9 +893,10 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
       src.buffer = buf; src.connect(audioCtxRef.current.destination); src.start()
     } catch { /* ignoriere AudioContext-Fehler */ }
     // Wort an Gemini schicken
+    const label = word.type === 'phrase' ? 'den Satz' : 'das Wort'
     wsRef.current?.send(JSON.stringify({
       clientContent: {
-        turns: [{ role: 'user', parts: [{ text: `Sprich das Wort "${word.en}" auf ${langName} vor. Auf Deutsch bedeutet es "${word.de}".` }] }],
+        turns: [{ role: 'user', parts: [{ text: `Sprich ${label} "${word.en}" auf ${langName} vor. Auf Deutsch bedeutet es "${word.de}".` }] }],
         turnComplete: true
       }
     }))
