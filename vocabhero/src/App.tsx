@@ -749,7 +749,8 @@ const LIVE_WS_URL = 'wss://lernheld.synology.me/live'
 const AUSSPRACHE_PROMPT = `Du bist ein geduldiger, freundlicher Sprachlehrer für Kinder im Alter von 8-14 Jahren.
 Einige Kinder haben ADHS oder Legasthenie – sei immer ermutigend, nie frustrierend.
 Sprich immer auf Deutsch, ausser wenn du das Vokabular in der Lernsprache vorliest.
-Ablauf: Sprich das Wort klar in der Lernsprache vor. Höre dem Kind zu. Gib kurzes freundliches Feedback (maximal 1-2 Sätze). Entscheide selbst ob ein weiterer Versuch sinnvoll ist – maximal 2-3 Versuche. Schliesse immer positiv ab.`
+Ablauf: Sprich das Wort klar in der Lernsprache vor. Höre dem Kind zu. Gib kurzes freundliches Feedback zur Aussprache (maximal 1-2 Sätze). Entscheide selbst ob ein weiterer Versuch sinnvoll ist – maximal 2-3 Versuche. Schliesse immer positiv ab.
+WICHTIG: Deine einzige Aufgabe ist Aussprache-Training für das genannte Vokabelwort. Wenn das Kind über andere Themen spricht (Wetter, Spiele, Alltag usw.), leite es freundlich aber bestimmt zurück: "Gute Frage! Aber jetzt üben wir das Wort. Versuch es nochmal!" Beantworte keine themenfremden Fragen und schlage keine anderen Übungsthemen vor.`
 
 function f32ToBase64Pcm(buf: Float32Array): string {
   const i16 = new Int16Array(buf.length)
@@ -778,7 +779,7 @@ function buildPcmWav(chunks: string[], rate = 24000): Blob {
   return new Blob([h, pcm], { type: 'audio/wav' })
 }
 
-type TrainerPhase = 'connecting' | 'intro' | 'mic-ready' | 'recording' | 'processing' | 'feedback' | 'done' | 'error'
+type TrainerPhase = 'connecting' | 'ready' | 'intro' | 'mic-ready' | 'recording' | 'processing' | 'feedback' | 'done' | 'error'
 
 function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
   vocab: VocabItem[]; lang: string; onScore: (n: number, mode?: string) => void; onBack: () => void
@@ -790,32 +791,44 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
   const wsRef = useRef<WebSocket | null>(null)
   const chunksRef = useRef<string[]>([])
   const stopRecRef = useRef<(() => void) | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const phaseRef = useRef<TrainerPhase>('connecting')
   const wordIdxRef = useRef(0)
   const scoreRef = useRef(0)
   const closingRef = useRef(false)
-  const sendWordRef = useRef<((idx: number) => void) | null>(null)
 
   const setP = (p: TrainerPhase) => { phaseRef.current = p; setPhase(p) }
   const langName = getLangLabel(lang).name
   const words = vocab.filter(v => v.en && v.de)
 
+  // iOS-fix: AudioContext beim User-Gesture entsperren + Audio abspielen via Web Audio API
+  const playChunks = async (chunks: string[]) => {
+    if (chunks.length === 0) {
+      setP(phaseRef.current === 'intro' ? 'mic-ready' : 'feedback')
+      return
+    }
+    try {
+      const wav = buildPcmWav(chunks, 24000)
+      const arrayBuffer = await wav.arrayBuffer()
+      let ctx = audioCtxRef.current
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext({ sampleRate: 24000 })
+        audioCtxRef.current = ctx
+      }
+      await ctx.resume()
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+      const source = ctx.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(ctx.destination)
+      source.onended = () => setP(phaseRef.current === 'intro' ? 'mic-ready' : 'feedback')
+      source.start()
+    } catch { setP(phaseRef.current === 'intro' ? 'mic-ready' : 'feedback') }
+  }
+
   useEffect(() => {
     if (words.length === 0) { setP('done'); return }
     const ws = new WebSocket(LIVE_WS_URL)
     wsRef.current = ws
-
-    const sendWord = (idx: number) => {
-      const word = words[idx]; if (!word) return
-      ws.send(JSON.stringify({
-        clientContent: {
-          turns: [{ role: 'user', parts: [{ text: `Sprich das Wort "${word.en}" auf ${langName} vor. Auf Deutsch bedeutet es "${word.de}".` }] }],
-          turnComplete: true
-        }
-      }))
-      wordIdxRef.current = idx; setWordIdx(idx); setP('intro')
-    }
-    sendWordRef.current = sendWord
 
     ws.onopen = () => {
       ws.send(JSON.stringify({
@@ -835,7 +848,6 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
 
     ws.onmessage = async (ev) => {
       try {
-        // Gemini-2.5-flash-native-audio sendet Binary-Frames → zuerst in Text konvertieren
         let text: string
         if (typeof ev.data === 'string') {
           text = ev.data
@@ -843,11 +855,10 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
           text = await ev.data.text()
         } else if (ev.data instanceof ArrayBuffer) {
           text = new TextDecoder().decode(ev.data)
-        } else {
-          return
-        }
+        } else { return }
         const msg = JSON.parse(text)
-        if (msg.setupComplete) { sendWord(0); return }
+        // setupComplete → zeige erstes Wort + Anhören-Button (kein Auto-Start → iOS-fix)
+        if (msg.setupComplete) { setWordIdx(0); wordIdxRef.current = 0; setP('ready'); return }
         if (msg.serverContent?.modelTurn?.parts) {
           for (const p of msg.serverContent.modelTurn.parts) {
             if (p.inlineData?.data) chunksRef.current.push(p.inlineData.data)
@@ -855,14 +866,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
         }
         if (msg.serverContent?.turnComplete) {
           const chunks = [...chunksRef.current]; chunksRef.current = []
-          if (chunks.length > 0) {
-            const blob = buildPcmWav(chunks, 24000)
-            const url = URL.createObjectURL(blob)
-            const audio = new Audio(url)
-            audio.onended = () => URL.revokeObjectURL(url)
-            audio.play().catch(console.error)
-          }
-          setP(phaseRef.current === 'intro' ? 'mic-ready' : 'feedback')
+          await playChunks(chunks)
         }
       } catch { /* ignoriere Parse-Fehler */ }
     }
@@ -870,8 +874,33 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
     ws.onerror = (e) => { console.error('[live] WS error', e); setP('error'); setErrMsg('Verbindungsfehler. Bitte erneut versuchen.') }
     ws.onclose = (e) => { console.warn('[live] WS closed', e.code, e.reason); if (!closingRef.current && phaseRef.current !== 'done') { setP('error'); setErrMsg(`Verbindung getrennt (Code ${e.code}${e.reason ? ': ' + e.reason : ''}).`) } }
 
-    return () => { closingRef.current = true; ws.close(); stopRecRef.current?.() }
+    return () => { closingRef.current = true; ws.close(); stopRecRef.current?.(); audioCtxRef.current?.close() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Anhören"-Button: AudioContext beim User-Gesture entsperren, dann Wort anfragen
+  const handleListen = async () => {
+    const idx = wordIdxRef.current
+    const word = words[idx]; if (!word) return
+    // AudioContext beim Tap entsperren (iOS braucht User-Gesture)
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext({ sampleRate: 24000 })
+      }
+      await audioCtxRef.current.resume()
+      // 1 Sample Stille spielen → iOS AudioContext dauerhaft entsperren
+      const buf = audioCtxRef.current.createBuffer(1, 1, 24000)
+      const src = audioCtxRef.current.createBufferSource()
+      src.buffer = buf; src.connect(audioCtxRef.current.destination); src.start()
+    } catch { /* ignoriere AudioContext-Fehler */ }
+    // Wort an Gemini schicken
+    wsRef.current?.send(JSON.stringify({
+      clientContent: {
+        turns: [{ role: 'user', parts: [{ text: `Sprich das Wort "${word.en}" auf ${langName} vor. Auf Deutsch bedeutet es "${word.de}".` }] }],
+        turnComplete: true
+      }
+    }))
+    setP('intro')
+  }
 
   const handleMicDown = async () => {
     if (phaseRef.current !== 'mic-ready' && phaseRef.current !== 'feedback') return
@@ -905,7 +934,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
       closingRef.current = true; wsRef.current?.close()
       setP('done'); onScore(scoreRef.current * 2, 'pronunciation')
     } else {
-      sendWordRef.current?.(next)
+      wordIdxRef.current = next; setWordIdx(next); setP('ready')
     }
   }
 
@@ -941,16 +970,29 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
         <p style={{ color: 'var(--text-dim)', margin: 0 }}>{cur?.de}</p>
       </div>
 
-      <div style={{ textAlign: 'center', minHeight: '2.5rem', marginBottom: '1.5rem', fontFamily: 'var(--font-main)' }}>
+      <div style={{ textAlign: 'center', minHeight: '3rem', marginBottom: '1rem', fontFamily: 'var(--font-main)' }}>
         {phase === 'connecting' && <p style={{ color: 'var(--text-dim)' }}>🔌 Verbinde mit KI...</p>}
-        {phase === 'intro'      && <p style={{ color: 'var(--text-dim)' }}>🔊 KI spricht vor...</p>}
         {phase === 'mic-ready'  && <p>👇 Halte den Button und sprich nach!</p>}
         {phase === 'recording'  && <p style={{ color: '#ef4444', fontWeight: 600 }}>🔴 Aufnahme läuft...</p>}
-        {phase === 'processing' && <p style={{ color: 'var(--text-dim)' }}>⏳ KI wertet aus...</p>}
-        {phase === 'feedback'   && <p style={{ color: 'var(--text-dim)' }}>🔊 Feedback...</p>}
+        {phase === 'feedback'   && <p style={{ color: 'var(--text-dim)' }}>🔊 KI gibt Feedback...</p>}
+        {(phase === 'intro' || phase === 'processing') && (
+          <div>
+            <p style={{ color: 'var(--text-dim)', marginBottom: '0.5rem' }}>
+              {phase === 'intro' ? '🔊 KI spricht vor...' : '⏳ KI analysiert...'}
+            </p>
+            <div className="loading-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+        {phase === 'ready' && (
+          <button className="btn-primary" style={{ fontFamily: 'var(--font-main)', fontSize: '1.1rem', padding: '0.8rem 2rem' }} onClick={handleListen}>
+            ▶️ Wort anhören
+          </button>
+        )}
         {(phase === 'mic-ready' || phase === 'recording' || phase === 'feedback') && (
           <button
             className={`mic-btn${phase === 'recording' ? ' mic-btn--active' : ''}`}
