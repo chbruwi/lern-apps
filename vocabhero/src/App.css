@@ -293,6 +293,13 @@ body {
   cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139,92,246,0.3);
 }
 .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,92,246,0.4); }
+.btn-secondary {
+  margin-top: 12px; padding: 12px 32px; border-radius: 12px;
+  border: 2px solid var(--purple); background: white;
+  color: var(--purple); font-family: 'Outfit', sans-serif; font-size: 1rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-secondary:hover { background: rgba(139,92,246,0.06); transform: translateY(-2px); }
 
 /* CONFETTI */
 .confetti-wrap { position: fixed; top: 0; left: 0; right: 0; height: 100vh; pointer-events: none; z-index: 999; overflow: hidden; }
