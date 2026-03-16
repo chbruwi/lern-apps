@@ -820,19 +820,30 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
     ws.onopen = () => {
       ws.send(JSON.stringify({
         setup: {
-          model: 'models/gemini-2.0-flash-exp',
+          model: 'models/gemini-2.5-flash-native-audio-latest',
           generationConfig: {
             responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Achird' } } }
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } }
           },
           systemInstruction: { parts: [{ text: AUSSPRACHE_PROMPT }] }
         }
       }))
     }
 
-    ws.onmessage = (ev) => {
+    ws.onmessage = async (ev) => {
       try {
-        const msg = JSON.parse(ev.data)
+        // Gemini-2.5-flash-native-audio sendet Binary-Frames → zuerst in Text konvertieren
+        let text: string
+        if (typeof ev.data === 'string') {
+          text = ev.data
+        } else if (ev.data instanceof Blob) {
+          text = await ev.data.text()
+        } else if (ev.data instanceof ArrayBuffer) {
+          text = new TextDecoder().decode(ev.data)
+        } else {
+          return
+        }
+        const msg = JSON.parse(text)
         if (msg.setupComplete) { sendWord(0); return }
         if (msg.serverContent?.modelTurn?.parts) {
           for (const p of msg.serverContent.modelTurn.parts) {

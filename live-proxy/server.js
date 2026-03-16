@@ -140,15 +140,15 @@ wss.on('connection', (clientWs, req) => {
 
   // --- Gemini → Client ---
   geminiWs.on('message', (data, isBinary) => {
-    // Erste Nachricht von Gemini loggen (hilft beim Debuggen)
-    if (!isBinary) {
+    if (isBinary) {
+      console.log(`[proxy] Gemini Binary: ${data.length} Bytes`)
+    } else {
       try {
         const parsed = JSON.parse(data.toString())
         if (parsed.error) {
-          console.error(`[proxy] Gemini Fehler-Nachricht: ${JSON.stringify(parsed.error)}`)
+          console.error(`[proxy] Gemini Fehler: ${JSON.stringify(parsed.error)}`)
         } else {
-          const keys = Object.keys(parsed)
-          console.log(`[proxy] Gemini Nachricht: ${keys.join(', ')}`)
+          console.log(`[proxy] Gemini Text: ${Object.keys(parsed).join(', ')}`)
         }
       } catch (_) {}
     }
