@@ -660,27 +660,37 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
 
   async function handleGenerateAllAudio() {
     if (!geminiKey) return
-    // Alle verarbeiten denen EINES der beiden Audios fehlt (nicht nur wenn beide fehlen)
     const missing = items.filter(i => i.id && (!i.audioLangUrl || !i.audioDeUrl))
-    // Wenn alle vollständig → alle neu generieren
     const toProcess = missing.length > 0 ? missing : items.filter(i => i.id)
     if (toProcess.length === 0) return
-    setBulkAudioRunning(true); setBulkAudioProgress(0)
+    setBulkAudioRunning(true); setBulkAudioProgress(0); setGenLog([])
+    let ok = 0; let fail = 0
     for (let i = 0; i < toProcess.length; i++) {
       const item = toProcess[i]
       setAudioLoadingIds(prev => new Set(prev).add(item.id!))
       try {
-        // Sequenziell statt parallel: verhindert Rate-Limiting beim DE-Audio
         const audioLangBlob = await generateVocabAudio(geminiKey, item.en, unit.language || 'en')
         await new Promise(r => setTimeout(r, 400))
         const audioDeBlob = await generateVocabAudio(geminiKey, item.de, 'de')
+        const langOk = !!audioLangBlob; const deOk = !!audioDeBlob
         await updateVocabItemAudio(token, item.id!, audioLangBlob, audioDeBlob, item.en, item.de)
-      } catch { /* silent – weiter mit nächstem */ }
+        if (langOk && deOk) {
+          ok++
+          setGenLog(prev => [...prev, `✅ ${item.en}`])
+        } else {
+          ok++ // gespeichert, aber teilweise
+          setGenLog(prev => [...prev, `⚠️ ${item.en} – ${!langOk ? 'Fremdsprache fehlt' : ''} ${!deOk ? 'DE fehlt' : ''}`.trim()])
+        }
+      } catch (e: any) {
+        fail++
+        setGenLog(prev => [...prev, `❌ ${item.en} – ${e.message ?? 'Fehler'}`])
+      }
       setAudioLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
       setBulkAudioProgress(i + 1)
       if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     setBulkAudioRunning(false)
+    setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
     load()
   }
 
