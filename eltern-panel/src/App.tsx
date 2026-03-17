@@ -1075,7 +1075,7 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 }
 
 // Komprimiert ein Bild auf max. 512×512px JPEG ~85% — verhindert HTTP 413 bei PocketBase
-async function compressImageBlob(blob: Blob, maxSize = 512, quality = 0.85): Promise<Blob> {
+async function compressImageBlob(blob: Blob, maxSize = 400, quality = 0.75): Promise<Blob> {
   return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(blob)
