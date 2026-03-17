@@ -502,10 +502,13 @@ export async function fetchWordProgress(
   if (vocabItemIds.length === 0) return []
   const filter = vocabItemIds.map(id => `vocab_item.id='${id}'`).join('||')
   const res = await fetch(
-    `${PB_URL}/api/collections/word_progress/records?filter=(${encodeURIComponent(filter)})&sort=-created&perPage=500`,
+    `${PB_URL}/api/collections/word_progress/records?filter=(${filter})&sort=-created&perPage=500`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
-  if (!res.ok) return []
+  if (!res.ok) {
+    console.warn('[fetchWordProgress] HTTP', res.status, await res.text().catch(() => ''))
+    return []
+  }
   const data = await res.json()
   return (data.items ?? []).map((r: any) => ({
     id: r.id,

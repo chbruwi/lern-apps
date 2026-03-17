@@ -595,6 +595,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
   const [activeTab, setActiveTab] = useState<'words' | 'lernstand'>('words')
   const [wordProgress, setWordProgress] = useState<WordProgressEntry[]>([])
   const [loadingProgress, setLoadingProgress] = useState(false)
+  const [progressError, setProgressError] = useState<string | null>(null)
   const [progressFilter, setProgressFilter] = useState<'all' | 'weak'>('all')
   const [progressChildren, setProgressChildren] = useState<Child[]>([])
   const [selectedChildId, setSelectedChildId] = useState<string>('all')
@@ -606,14 +607,19 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
 
   const loadProgress = useCallback((currentItems: VocabItem[]) => {
     const ids = currentItems.map(i => i.id).filter(Boolean) as string[]
-    if (ids.length === 0) return
+    if (ids.length === 0) { setProgressError('Keine Wort-IDs gefunden'); return }
     setLoadingProgress(true)
+    setProgressError(null)
     Promise.all([
       fetchWordProgress(token, ids),
       progressChildren.length === 0 ? fetchChildren(token) : Promise.resolve(progressChildren),
     ]).then(([progress, kids]) => {
+      console.log('[Lernstand] progress records:', progress.length, 'kids:', kids.length)
       setWordProgress(progress)
       setProgressChildren(kids)
+    }).catch(err => {
+      console.error('[Lernstand] Fehler:', err)
+      setProgressError(String(err))
     }).finally(() => setLoadingProgress(false))
   }, [token, progressChildren])
 
@@ -888,6 +894,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       {/* Lernstand Tab */}
       {activeTab === 'lernstand' && (() => {
         if (loadingProgress) return <div className="loading">Lade Lernstand...</div>
+        if (progressError) return <div className="empty-card"><p style={{color:'#ef4444'}}>⚠️ Fehler: {progressError}</p><button className="btn-secondary" style={{marginTop:8}} onClick={() => loadProgress(items)}>🔄 Nochmal versuchen</button></div>
         if (items.length === 0) return <div className="empty-card"><p>Noch keine Wörter vorhanden.</p></div>
 
         // Statistiken berechnen (gefiltert nach Kind)
