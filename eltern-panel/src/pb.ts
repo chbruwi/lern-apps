@@ -497,11 +497,14 @@ export interface WordProgressEntry {
 
 export async function fetchWordProgress(
   token: string,
-  unitId: string,
+  vocabItemIds: string[],
 ): Promise<WordProgressEntry[]> {
-  // Filtert per verschachtelter Relation: alle word_progress-Records für diese Unit
+  if (vocabItemIds.length === 0) return []
+  // Alle Records laden, dann client-seitig auf diese Unit filtern
+  // (PocketBase v0.23 unterstützt keine mehrschichtigen Relation-Filter)
+  const idSet = new Set(vocabItemIds)
   const res = await fetch(
-    `${PB_URL}/api/collections/word_progress/records?filter=(vocab_item.unit='${unitId}')&sort=-created&perPage=500`,
+    `${PB_URL}/api/collections/word_progress/records?sort=-created&perPage=2000`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
   if (!res.ok) {
@@ -509,7 +512,7 @@ export async function fetchWordProgress(
     return []
   }
   const data = await res.json()
-  return (data.items ?? []).map((r: any) => ({
+  const all: WordProgressEntry[] = (data.items ?? []).map((r: any) => ({
     id: r.id,
     userId: r.user,
     vocabItemId: r.vocab_item,
@@ -517,6 +520,8 @@ export async function fetchWordProgress(
     correct: r.correct,
     created: r.created,
   }))
+  console.log('[fetchWordProgress] total:', all.length, '→ filtered for unit:', all.filter(e => idSet.has(e.vocabItemId)).length)
+  return all.filter(e => idSet.has(e.vocabItemId))
 }
 
 export function parseBulkText(rawText: string): { en: string; de: string; type: 'word' | 'phrase' }[] {
