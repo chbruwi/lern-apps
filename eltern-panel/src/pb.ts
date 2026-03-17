@@ -497,12 +497,11 @@ export interface WordProgressEntry {
 
 export async function fetchWordProgress(
   token: string,
-  vocabItemIds: string[],
+  unitId: string,
 ): Promise<WordProgressEntry[]> {
-  if (vocabItemIds.length === 0) return []
-  const filter = vocabItemIds.map(id => `vocab_item.id='${id}'`).join('||')
+  // Filtert per verschachtelter Relation: alle word_progress-Records für diese Unit
   const res = await fetch(
-    `${PB_URL}/api/collections/word_progress/records?filter=(${filter})&sort=-created&perPage=500`,
+    `${PB_URL}/api/collections/word_progress/records?filter=(vocab_item.unit='${unitId}')&sort=-created&perPage=500`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
   if (!res.ok) {

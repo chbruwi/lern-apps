@@ -605,13 +605,11 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
     fetchVocabItems(token, unit.id).then(setItems).finally(() => setLoading(false))
   }, [token, unit.id])
 
-  const loadProgress = useCallback((currentItems: VocabItem[]) => {
-    const ids = currentItems.map(i => i.id).filter(Boolean) as string[]
-    if (ids.length === 0) { setProgressError('Keine Wort-IDs gefunden'); return }
+  const loadProgress = useCallback(() => {
     setLoadingProgress(true)
     setProgressError(null)
     Promise.all([
-      fetchWordProgress(token, ids),
+      fetchWordProgress(token, unit.id),
       progressChildren.length === 0 ? fetchChildren(token) : Promise.resolve(progressChildren),
     ]).then(([progress, kids]) => {
       console.log('[Lernstand] progress records:', progress.length, 'kids:', kids.length)
@@ -621,7 +619,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       console.error('[Lernstand] Fehler:', err)
       setProgressError(String(err))
     }).finally(() => setLoadingProgress(false))
-  }, [token, progressChildren])
+  }, [token, unit.id, progressChildren])
 
   useEffect(() => { load() }, [load])
 
@@ -886,7 +884,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
           style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }}
           onClick={() => {
             setActiveTab('lernstand')
-            if (wordProgress.length === 0 && items.length > 0) loadProgress(items)
+            if (wordProgress.length === 0) loadProgress()
           }}
         >📊 Lernstand</button>
       </div>
@@ -894,7 +892,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       {/* Lernstand Tab */}
       {activeTab === 'lernstand' && (() => {
         if (loadingProgress) return <div className="loading">Lade Lernstand...</div>
-        if (progressError) return <div className="empty-card"><p style={{color:'#ef4444'}}>⚠️ Fehler: {progressError}</p><button className="btn-secondary" style={{marginTop:8}} onClick={() => loadProgress(items)}>🔄 Nochmal versuchen</button></div>
+        if (progressError) return <div className="empty-card"><p style={{color:'#ef4444'}}>⚠️ Fehler: {progressError}</p><button className="btn-secondary" style={{marginTop:8}} onClick={() => loadProgress()}>🔄 Nochmal versuchen</button></div>
         if (items.length === 0) return <div className="empty-card"><p>Noch keine Wörter vorhanden.</p></div>
 
         // Statistiken berechnen (gefiltert nach Kind)
@@ -964,7 +962,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
               <button
                 className="btn-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem', marginLeft: 'auto' }}
-                onClick={() => loadProgress(items)}
+                onClick={() => loadProgress()}
               >🔄 Aktualisieren</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
