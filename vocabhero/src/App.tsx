@@ -1146,6 +1146,12 @@ function App() {
     setSelectedUnit(null)
   }
 
+  // handleWordResult: Wort-Tracking fire-and-forget (muss VOR den early returns stehen – Rules of Hooks)
+  const handleWordResult = useCallback((itemId: string, correct: boolean) => {
+    if (!pbUser || !itemId) return
+    logWordProgress(pbUser.token, pbUser.id, itemId, view, correct)
+  }, [pbUser, view])
+
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
   if (loadingVocab) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -1153,12 +1159,6 @@ function App() {
     </div>
   )
   if (!selectedUnit) return <UnitPicker units={units} onSelect={handleSelectUnit} />
-
-  // handleWordResult: Wort-Tracking fire-and-forget
-  const handleWordResult = useCallback((itemId: string, correct: boolean) => {
-    if (!pbUser || !itemId) return
-    logWordProgress(pbUser.token, pbUser.id, itemId, view, correct)
-  }, [pbUser, view])
 
   // addCoins: verdient Münzen + erhöht XP für Level-Progression
   const addCoins = (pts: number, gameMode?: View) => {
