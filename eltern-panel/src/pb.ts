@@ -500,7 +500,7 @@ export async function fetchWordProgress(
   vocabItemIds: string[],
 ): Promise<WordProgressEntry[]> {
   if (vocabItemIds.length === 0) return []
-  const filter = vocabItemIds.map(id => `vocab_item='${id}'`).join('||')
+  const filter = vocabItemIds.map(id => `vocab_item.id='${id}'`).join('||')
   const res = await fetch(
     `${PB_URL}/api/collections/word_progress/records?filter=(${encodeURIComponent(filter)})&sort=-created&perPage=500`,
     { headers: { Authorization: `Bearer ${token}` } }
