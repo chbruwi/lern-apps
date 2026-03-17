@@ -678,7 +678,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       } catch { /* silent – weiter mit nächstem */ }
       setAudioLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
       setBulkAudioProgress(i + 1)
-      if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 600))
+      if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     setBulkAudioRunning(false)
     load()
@@ -727,7 +727,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       }
       setImageLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
       setBulkImageProgress(i + 1)
-      if (i < all.length - 1) await new Promise(r => setTimeout(r, 800))
+      if (i < all.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     setBulkImageRunning(false)
     setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
@@ -970,7 +970,7 @@ function BulkImport({ token, unit, geminiKey, onBack }: {
         errors.push(`❌ ${item.en}: ${e.message ?? 'Fehler'}`)
       }
       setImportProgress(i + 1)
-      if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 600))
+      if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     if (errors.length === 0) {
       setResult(`✅ ${ok} Wörter importiert!`)
@@ -1072,6 +1072,26 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   const arr = new Uint8Array(bytes.length)
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
   return new Blob([arr], { type: mimeType })
+}
+
+// Komprimiert ein Bild auf max. 512×512px JPEG ~85% — verhindert HTTP 413 bei PocketBase
+async function compressImageBlob(blob: Blob, maxSize = 512, quality = 0.85): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(blob)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      canvas.toBlob(b => resolve(b ?? blob), 'image/jpeg', quality)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(blob) }
+    img.src = url
+  })
 }
 
 // ─── PCM → WAV Konvertierung ──────────────────────────────────────────────────
@@ -1217,7 +1237,9 @@ async function generateVocabImage(apiKey: string, en: string, de: string): Promi
     const b64: string | undefined = part?.inlineData?.data
     const mime: string = part?.inlineData?.mimeType ?? 'image/png'
     if (!b64) return { blob: null, error: 'Keine Bild-Daten in der API-Antwort' }
-    return { blob: base64ToBlob(b64, mime), error: null }
+    const raw = base64ToBlob(b64, mime)
+    const compressed = await compressImageBlob(raw)
+    return { blob: compressed, error: null }
   } catch (e: any) {
     return { blob: null, error: e?.message ?? 'Netzwerkfehler' }
   }
