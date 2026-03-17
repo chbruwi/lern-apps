@@ -596,6 +596,8 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
   const [wordProgress, setWordProgress] = useState<WordProgressEntry[]>([])
   const [loadingProgress, setLoadingProgress] = useState(false)
   const [progressFilter, setProgressFilter] = useState<'all' | 'weak'>('all')
+  const [progressChildren, setProgressChildren] = useState<Child[]>([])
+  const [selectedChildId, setSelectedChildId] = useState<string>('all')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -606,8 +608,14 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
     const ids = currentItems.map(i => i.id).filter(Boolean) as string[]
     if (ids.length === 0) return
     setLoadingProgress(true)
-    fetchWordProgress(token, ids).then(setWordProgress).finally(() => setLoadingProgress(false))
-  }, [token])
+    Promise.all([
+      fetchWordProgress(token, ids),
+      progressChildren.length === 0 ? fetchChildren(token) : Promise.resolve(progressChildren),
+    ]).then(([progress, kids]) => {
+      setWordProgress(progress)
+      setProgressChildren(kids)
+    }).finally(() => setLoadingProgress(false))
+  }, [token, progressChildren])
 
   useEffect(() => { load() }, [load])
 
@@ -882,12 +890,16 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
         if (loadingProgress) return <div className="loading">Lade Lernstand...</div>
         if (items.length === 0) return <div className="empty-card"><p>Noch keine Wörter vorhanden.</p></div>
 
-        // Statistiken berechnen
+        // Statistiken berechnen (gefiltert nach Kind)
+        const filteredProgress = selectedChildId === 'all'
+          ? wordProgress
+          : wordProgress.filter(e => e.userId === selectedChildId)
+
         type WordStats = { correct: number; wrong: number; total: number; mastery: number; lastPracticed?: string }
         const statsMap: Record<string, WordStats> = {}
         for (const item of items) {
           if (!item.id) continue
-          const entries = wordProgress.filter(e => e.vocabItemId === item.id)
+          const entries = filteredProgress.filter(e => e.vocabItemId === item.id)
           const correct = entries.filter(e => e.correct).length
           const wrong = entries.filter(e => !e.correct).length
           const total = entries.length
@@ -918,6 +930,20 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
         return (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Kind-Selektor */}
+              {progressChildren.length > 0 && (
+                <select
+                  className="field-sm"
+                  value={selectedChildId}
+                  onChange={e => setSelectedChildId(e.target.value)}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  <option value="all">👥 Alle Kinder</option>
+                  {progressChildren.map(c => (
+                    <option key={c.id} value={c.id}>👤 {c.username}</option>
+                  ))}
+                </select>
+              )}
               <button
                 className={progressFilter === 'all' ? 'btn-primary' : 'btn-secondary'}
                 style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}
