@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
-import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, PbUser, VocabItem, VocabUnit } from './pb'
+import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, PbUser, VocabItem, VocabUnit } from './pb'
 
 // Shared coin storage (same key as Mathe-Held & Spielecke)
 const SK_COINS = 'lernheld-v1-coins'
@@ -149,7 +149,7 @@ function SpeakerButton({ url, label }: { url?: string; label?: string }) {
 // MODULE 1: FLIP CARDS
 // ============================================================
 
-function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
+function FlipCards({ vocab, lang, onScore, onBack, onWordResult }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void; onWordResult?: (itemId: string, correct: boolean) => void }) {
   const [cards, setCards] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -169,6 +169,7 @@ function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
   useEffect(() => { init() }, [init])
 
   const next = (knew: boolean) => {
+    onWordResult?.(cards[idx].id ?? '', knew)
     if (knew) { setKnown(k => k + 1); onScore(2) }
     else setUnknown(u => u + 1)
     setFlipped(false)
@@ -252,7 +253,7 @@ function FlipCards({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
 // MODULE 2: MATCH-IT
 // ============================================================
 
-function MatchIt({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
+function MatchIt({ vocab, lang, onScore, onBack, onWordResult }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void; onWordResult?: (itemId: string, correct: boolean) => void }) {
   const [pairs, setPairs] = useState<VocabItem[]>([])
   const [leftItems, setLeftItems] = useState<{ id: number; text: string; imageUrl?: string }[]>([])
   const [rightItems, setRightItems] = useState<{ id: number; text: string }[]>([])
@@ -284,6 +285,7 @@ function MatchIt({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: s
   const handleRight = (id: number) => {
     if (matched.includes(id) || selectedLeft === null) return
     if (selectedLeft === id) {
+      onWordResult?.(pairs[id]?.id ?? '', true)
       const newMatched = [...matched, id]
       setMatched(newMatched)
       setSelectedLeft(null)
@@ -293,6 +295,7 @@ function MatchIt({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: s
         onScore(5)
       }
     } else {
+      onWordResult?.(pairs[selectedLeft]?.id ?? '', false)
       setWrongPair([selectedLeft, id])
       setTimeout(() => {
         setWrongPair(null)
@@ -350,7 +353,7 @@ function MatchIt({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: s
 // MODULE 3: SPEED QUIZ
 // ============================================================
 
-function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
+function SpeedQuiz({ vocab, lang, onScore, onBack, onWordResult }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void; onWordResult?: (itemId: string, correct: boolean) => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [options, setOptions] = useState<string[]>([])
@@ -392,6 +395,7 @@ function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
       setTimer(t => {
         if (t <= 1) {
           clearInterval(timerRef.current!)
+          onWordResult?.(questions[idx]?.id ?? '', false)
           setFeedback('wrong')
           setTimeout(() => {
             setFeedback(null)
@@ -406,13 +410,15 @@ function SpeedQuiz({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang:
       })
     }, 1000)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [idx, feedback, questions, setupQ, onScore])
+  }, [idx, feedback, questions, setupQ, onScore, onWordResult])
 
   const handleAnswer = (ans: string) => {
     if (feedback) return
     ;(document.activeElement as HTMLElement)?.blur()
     if (timerRef.current) clearInterval(timerRef.current)
-    if (ans === correctAnswer) {
+    const isCorrect = ans === correctAnswer
+    onWordResult?.(questions[idx]?.id ?? '', isCorrect)
+    if (isCorrect) {
       setFeedback('correct')
       setScore(s => s + 1)
       onScore(3)
@@ -501,7 +507,7 @@ function getScrambleTarget(item: VocabItem, showEn: boolean, lang: string): stri
   return item.de
 }
 
-function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
+function BuchstabenSalat({ vocab, lang, onScore, onBack, onWordResult }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void; onWordResult?: (itemId: string, correct: boolean) => void }) {
   const [questions, setQuestions] = useState<VocabItem[]>([])
   const [idx, setIdx] = useState(0)
   const [showEn, setShowEn] = useState(true)
@@ -558,6 +564,7 @@ function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[];
     if (newAnswer.length === scrambled.length) {
       const target = getScrambleTarget(questions[idx], showEn, lang)
       if (newAnswer.join('') === target) {
+        onWordResult?.(questions[idx]?.id ?? '', true)
         setFeedback('correct')
         setScore(s => s + 1)
         onScore(4)
@@ -568,6 +575,7 @@ function BuchstabenSalat({ vocab, lang, onScore, onBack }: { vocab: VocabItem[];
           else { setShowConfetti(true); onScore(5) }
         }, 1000)
       } else {
+        onWordResult?.(questions[idx]?.id ?? '', false)
         setFeedback('wrong')
         setTimeout(() => {
           setUserAnswer([])
@@ -781,8 +789,8 @@ function buildPcmWav(chunks: string[], rate = 24000): Blob {
 
 type TrainerPhase = 'connecting' | 'ready' | 'intro' | 'mic-ready' | 'recording' | 'processing' | 'feedback' | 'done' | 'error'
 
-function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
-  vocab: VocabItem[]; lang: string; onScore: (n: number, mode?: string) => void; onBack: () => void
+function AusspracheTrainer({ vocab, lang, onScore, onBack, onRetry, onWordResult }: {
+  vocab: VocabItem[]; lang: string; onScore: (n: number, mode?: string) => void; onBack: () => void; onRetry?: () => void; onWordResult?: (itemId: string, correct: boolean) => void
 }) {
   const [phase, setPhase] = useState<TrainerPhase>('connecting')
   const [wordIdx, setWordIdx] = useState(0)
@@ -931,6 +939,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
   const handleNext = () => {
     const next = wordIdxRef.current + 1
     scoreRef.current += 1
+    onWordResult?.(words[wordIdxRef.current]?.id ?? '', true)
     if (next >= words.length) {
       closingRef.current = true; wsRef.current?.close()
       setP('done'); onScore(scoreRef.current * 2, 'pronunciation')
@@ -953,8 +962,17 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack }: {
   if (phase === 'error') return (
     <div className="content" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
       <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>😕</div>
-      <p>{errMsg}</p>
-      <button className="btn-secondary" style={{ marginTop: '1rem', fontFamily: 'var(--font-main)' }} onClick={onBack}>← Zurück</button>
+      <p style={{ color: 'var(--text-dim)', fontSize: '1rem' }}>
+        {errMsg.includes('1006') || errMsg.includes('unterbrochen') || errMsg.includes('timeout')
+          ? 'Verbindung unterbrochen – kein Problem!'
+          : errMsg}
+      </p>
+      {onRetry && (
+        <button className="btn-primary" style={{ marginTop: '1rem', fontFamily: 'var(--font-main)' }} onClick={onRetry}>
+          🔄 Nochmal
+        </button>
+      )}
+      <button className="btn-secondary" style={{ marginTop: '0.75rem', fontFamily: 'var(--font-main)' }} onClick={onBack}>← Zurück</button>
     </div>
   )
 
@@ -1032,6 +1050,7 @@ const GAMES = [
 
 function App() {
   const [view, setView] = useState<View>('menu')
+  const [pronunciationKey, setPronunciationKey] = useState(0)
   const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [loadingVocab, setLoadingVocab] = useState(false)
@@ -1135,6 +1154,12 @@ function App() {
   )
   if (!selectedUnit) return <UnitPicker units={units} onSelect={handleSelectUnit} />
 
+  // handleWordResult: Wort-Tracking fire-and-forget
+  const handleWordResult = useCallback((itemId: string, correct: boolean) => {
+    if (!pbUser || !itemId) return
+    logWordProgress(pbUser.token, pbUser.id, itemId, view, correct)
+  }, [pbUser, view])
+
   // addCoins: verdient Münzen + erhöht XP für Level-Progression
   const addCoins = (pts: number, gameMode?: View) => {
     setCoins(prev => { const n = Math.max(0, prev + pts); saveCoins(n); return n })
@@ -1172,11 +1197,11 @@ function App() {
           <span className="top-score">🪙 {coins}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip'         && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'match'        && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'speed'        && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'scramble'     && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'pronunciation'&& <AusspracheTrainer vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'flip'         && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'match'        && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'speed'        && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'scramble'     && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'pronunciation'&& <AusspracheTrainer key={pronunciationKey} vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onRetry={() => setPronunciationKey(k => k + 1)} onWordResult={handleWordResult} />}
       </div>
     )
   }

@@ -8,6 +8,7 @@ import {
   fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
   createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
+  fetchWordProgress, WordProgressEntry,
 } from './pb'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -591,11 +592,22 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
   const [bulkImageRunning, setBulkImageRunning] = useState(false)
   const [bulkImageProgress, setBulkImageProgress] = useState(0)
   const [genLog, setGenLog] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<'words' | 'lernstand'>('words')
+  const [wordProgress, setWordProgress] = useState<WordProgressEntry[]>([])
+  const [loadingProgress, setLoadingProgress] = useState(false)
+  const [progressFilter, setProgressFilter] = useState<'all' | 'weak'>('all')
 
   const load = useCallback(() => {
     setLoading(true)
     fetchVocabItems(token, unit.id).then(setItems).finally(() => setLoading(false))
   }, [token, unit.id])
+
+  const loadProgress = useCallback((currentItems: VocabItem[]) => {
+    const ids = currentItems.map(i => i.id).filter(Boolean) as string[]
+    if (ids.length === 0) return
+    setLoadingProgress(true)
+    fetchWordProgress(token, ids).then(setWordProgress).finally(() => setLoadingProgress(false))
+  }, [token])
 
   useEffect(() => { load() }, [load])
 
@@ -848,6 +860,106 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
         </div>
       )}
 
+      {/* Tab Toggle */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button
+          className={activeTab === 'words' ? 'btn-primary' : 'btn-secondary'}
+          style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }}
+          onClick={() => setActiveTab('words')}
+        >📝 Wörter</button>
+        <button
+          className={activeTab === 'lernstand' ? 'btn-primary' : 'btn-secondary'}
+          style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }}
+          onClick={() => {
+            setActiveTab('lernstand')
+            if (wordProgress.length === 0 && items.length > 0) loadProgress(items)
+          }}
+        >📊 Lernstand</button>
+      </div>
+
+      {/* Lernstand Tab */}
+      {activeTab === 'lernstand' && (() => {
+        if (loadingProgress) return <div className="loading">Lade Lernstand...</div>
+        if (items.length === 0) return <div className="empty-card"><p>Noch keine Wörter vorhanden.</p></div>
+
+        // Statistiken berechnen
+        type WordStats = { correct: number; wrong: number; total: number; mastery: number; lastPracticed?: string }
+        const statsMap: Record<string, WordStats> = {}
+        for (const item of items) {
+          if (!item.id) continue
+          const entries = wordProgress.filter(e => e.vocabItemId === item.id)
+          const correct = entries.filter(e => e.correct).length
+          const wrong = entries.filter(e => !e.correct).length
+          const total = entries.length
+          const mastery = total === 0 ? -1 : correct / total
+          const lastPracticed = entries[0]?.created  // sortiert -created, also neueste zuerst
+          statsMap[item.id] = { correct, wrong, total, mastery, lastPracticed }
+        }
+
+        const filtered = items.filter(item => {
+          if (progressFilter === 'weak') {
+            const s = statsMap[item.id ?? '']
+            return !s || s.total === 0 || s.mastery < 0.75
+          }
+          return true
+        })
+
+        const masteryIcon = (m: number) => m < 0 ? '⬜' : m >= 0.75 ? '🟢' : m >= 0.5 ? '🟡' : '🔴'
+        const formatDate = (iso?: string) => {
+          if (!iso) return '—'
+          const d = new Date(iso)
+          const now = new Date()
+          const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
+          if (diff === 0) return 'heute'
+          if (diff === 1) return 'gestern'
+          return `vor ${diff} Tagen`
+        }
+
+        return (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                className={progressFilter === 'all' ? 'btn-primary' : 'btn-secondary'}
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}
+                onClick={() => setProgressFilter('all')}
+              >Alle ({items.length})</button>
+              <button
+                className={progressFilter === 'weak' ? 'btn-primary' : 'btn-secondary'}
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}
+                onClick={() => setProgressFilter('weak')}
+              >🔴 Schwach ({items.filter(i => { const s = statsMap[i.id ?? '']; return !s || s.total === 0 || s.mastery < 0.75 }).length})</button>
+              <button
+                className="btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem', marginLeft: 'auto' }}
+                onClick={() => loadProgress(items)}
+              >🔄 Aktualisieren</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filtered.map(item => {
+                const s = statsMap[item.id ?? ''] ?? { correct: 0, wrong: 0, total: 0, mastery: -1 }
+                const pct = s.total === 0 ? '—' : `${Math.round(s.mastery * 100)}%`
+                return (
+                  <div key={item.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px',
+                    fontSize: '0.85rem'
+                  }}>
+                    <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{masteryIcon(s.mastery)}</span>
+                    <span style={{ flex: 1, fontWeight: 500 }}>{item.en} <span style={{ color: '#888', fontWeight: 400 }}>/ {item.de}</span></span>
+                    <span style={{ color: '#22c55e', fontWeight: 600, flexShrink: 0 }}>✅ {s.correct}</span>
+                    <span style={{ color: '#ef4444', fontWeight: 600, flexShrink: 0 }}>❌ {s.wrong}</span>
+                    <span style={{ color: '#6366f1', flexShrink: 0 }}>{pct}</span>
+                    <span style={{ color: '#aaa', fontSize: '0.75rem', flexShrink: 0 }}>{formatDate(s.lastPracticed)}</span>
+                  </div>
+                )
+              })}
+              {filtered.length === 0 && <p style={{ color: '#888', textAlign: 'center' }}>Keine schwachen Wörter – super! 🎉</p>}
+            </div>
+          </>
+        )
+      })()}
+
+      {activeTab === 'words' && <>
       {/* Add Word Form */}
       <form className="add-word-form" onSubmit={handleAddItem}>
         <input className="field" placeholder="Englisch..." value={newItem.en}
@@ -934,6 +1046,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
           </table>
         </div>
       )}
+      </>}
     </div>
   )
 }

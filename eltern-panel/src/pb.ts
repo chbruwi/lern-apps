@@ -484,6 +484,39 @@ export async function updateVocabItemImage(
   }
 }
 
+// ─── Word Progress ─────────────────────────────────────────────────────────────
+
+export interface WordProgressEntry {
+  id: string
+  userId: string
+  vocabItemId: string
+  gameMode: string
+  correct: boolean
+  created: string
+}
+
+export async function fetchWordProgress(
+  token: string,
+  vocabItemIds: string[],
+): Promise<WordProgressEntry[]> {
+  if (vocabItemIds.length === 0) return []
+  const filter = vocabItemIds.map(id => `vocab_item='${id}'`).join('||')
+  const res = await fetch(
+    `${PB_URL}/api/collections/word_progress/records?filter=(${encodeURIComponent(filter)})&sort=-created&perPage=500`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.items ?? []).map((r: any) => ({
+    id: r.id,
+    userId: r.user,
+    vocabItemId: r.vocab_item,
+    gameMode: r.game_mode,
+    correct: r.correct,
+    created: r.created,
+  }))
+}
+
 export function parseBulkText(rawText: string): { en: string; de: string; type: 'word' | 'phrase' }[] {
   const lines = rawText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
   const parsed: { en: string; de: string; type: 'word' | 'phrase' }[] = []

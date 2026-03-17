@@ -68,6 +68,8 @@ export interface VocabItem {
   de: string
   type: 'word' | 'phrase'
   imageUrl?: string
+  audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
+  audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
 }
 
 export interface VocabUnit {
@@ -123,7 +125,31 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
     de: r.de,
     type: r.type ?? 'word',
     imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}` : undefined,
+    audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
+    audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
   }))
+}
+
+// ─── Word Progress Tracking ───────────────────────────────────────────────────
+
+export async function logWordProgress(
+  token: string,
+  userId: string,
+  vocabItemId: string,
+  gameMode: string,
+  correct: boolean,
+): Promise<void> {
+  if (!vocabItemId) return  // Guard: Item ohne ID überspringen
+  try {
+    await fetch(`${PB_URL}/api/collections/word_progress/records`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user: userId, vocab_item: vocabItemId, game_mode: gameMode, correct }),
+    })
+  } catch { /* fire-and-forget – Spiel läuft weiter */ }
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
