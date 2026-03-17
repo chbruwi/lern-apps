@@ -52,6 +52,7 @@ export interface VocabItem {
   en: string
   de: string
   type: 'word' | 'phrase'
+  imageUrl?: string      // Bild-URL (aus PocketBase File)
   audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
   audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
 }
@@ -315,6 +316,7 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
   return (data.items ?? []).map((r: any) => ({
     id: r.id, unitId: r.unit,
     en: r.en, de: r.de, type: r.type ?? 'word',
+    imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}` : undefined,
     audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
     audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
   }))
@@ -329,9 +331,38 @@ export async function createVocabItem(
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ unit: d.unitId, en: d.en.trim(), de: d.de.trim(), type: d.type }),
   })
-  if (!res.ok) throw new Error('Wort speichern fehlgeschlagen')
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try { const b = await res.json(); detail = b?.message ?? detail } catch {}
+    throw new Error(`Wort speichern fehlgeschlagen (${detail})`)
+  }
   const r = await res.json()
   return { id: r.id, unitId: r.unit, en: r.en, de: r.de, type: r.type }
+}
+
+export async function updateVocabItemMedia(
+  token: string,
+  id: string,
+  imageBlob: Blob | null,
+  audioLangBlob: Blob | null,
+  audioDeBlob: Blob | null,
+  en: string,
+  de: string,
+): Promise<void> {
+  const formData = new FormData()
+  if (imageBlob) formData.append('image', imageBlob, `${en.trim().replace(/\s+/g, '_')}.jpg`)
+  if (audioLangBlob) formData.append('audio_lang', audioLangBlob, `${en.trim().replace(/\s+/g, '_')}_lang.wav`)
+  if (audioDeBlob) formData.append('audio_de', audioDeBlob, `${de.trim().replace(/\s+/g, '_')}_de.wav`)
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try { const b = await res.json(); detail = b?.message ?? detail } catch {}
+    throw new Error(`Media speichern fehlgeschlagen (${detail})`)
+  }
 }
 
 export async function deleteVocabItem(token: string, id: string): Promise<void> {
@@ -431,6 +462,26 @@ export async function updateVocabItemAudio(
     body: formData,
   })
   if (!res.ok) throw new Error('Audio speichern fehlgeschlagen')
+}
+
+export async function updateVocabItemImage(
+  token: string,
+  id: string,
+  imageBlob: Blob,
+  en: string,
+): Promise<void> {
+  const formData = new FormData()
+  formData.append('image', imageBlob, `${en.trim().replace(/\s+/g, '_')}.jpg`)
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try { const b = await res.json(); detail = b?.message ?? detail } catch {}
+    throw new Error(`Bild speichern fehlgeschlagen (${detail})`)
+  }
 }
 
 export function parseBulkText(rawText: string): { en: string; de: string; type: 'word' | 'phrase' }[] {

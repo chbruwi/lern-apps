@@ -6,7 +6,7 @@ import {
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
-  createVocabItemWithImage, updateVocabItemAudio, bulkImportVocab, parseBulkText,
+  createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
 } from './pb'
 
@@ -587,6 +587,10 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
   const [audioLoadingIds, setAudioLoadingIds] = useState<Set<string>>(new Set())
   const [bulkAudioRunning, setBulkAudioRunning] = useState(false)
   const [bulkAudioProgress, setBulkAudioProgress] = useState(0)
+  const [imageLoadingIds, setImageLoadingIds] = useState<Set<string>>(new Set())
+  const [bulkImageRunning, setBulkImageRunning] = useState(false)
+  const [bulkImageProgress, setBulkImageProgress] = useState(0)
+  const [genLog, setGenLog] = useState<string[]>([])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -656,24 +660,77 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
 
   async function handleGenerateAllAudio() {
     if (!geminiKey) return
-    const missing = items.filter(i => !i.audioLangUrl && !i.audioDeUrl && i.id)
-    if (missing.length === 0) { alert('Alle Wörter haben bereits Audio.'); return }
+    // Alle verarbeiten denen EINES der beiden Audios fehlt (nicht nur wenn beide fehlen)
+    const missing = items.filter(i => i.id && (!i.audioLangUrl || !i.audioDeUrl))
+    // Wenn alle vollständig → alle neu generieren
+    const toProcess = missing.length > 0 ? missing : items.filter(i => i.id)
+    if (toProcess.length === 0) return
     setBulkAudioRunning(true); setBulkAudioProgress(0)
-    for (let i = 0; i < missing.length; i++) {
-      const item = missing[i]
+    for (let i = 0; i < toProcess.length; i++) {
+      const item = toProcess[i]
       setAudioLoadingIds(prev => new Set(prev).add(item.id!))
       try {
-        const [audioLangBlob, audioDeBlob] = await Promise.all([
-          generateVocabAudio(geminiKey, item.en, unit.language || 'en'),
-          generateVocabAudio(geminiKey, item.de, 'de'),
-        ])
+        // Sequenziell statt parallel: verhindert Rate-Limiting beim DE-Audio
+        const audioLangBlob = await generateVocabAudio(geminiKey, item.en, unit.language || 'en')
+        await new Promise(r => setTimeout(r, 400))
+        const audioDeBlob = await generateVocabAudio(geminiKey, item.de, 'de')
         await updateVocabItemAudio(token, item.id!, audioLangBlob, audioDeBlob, item.en, item.de)
       } catch { /* silent – weiter mit nächstem */ }
       setAudioLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
       setBulkAudioProgress(i + 1)
-      if (i < missing.length - 1) await new Promise(r => setTimeout(r, 500))
+      if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 600))
     }
     setBulkAudioRunning(false)
+    load()
+  }
+
+  async function handleGenerateImage(item: VocabItem) {
+    if (!geminiKey || !item.id) return
+    setImageLoadingIds(prev => new Set(prev).add(item.id!))
+    const result = await generateVocabImage(geminiKey, item.en, item.de)
+    if (result.blob) {
+      try {
+        await updateVocabItemImage(token, item.id!, result.blob, item.en)
+        load()
+      } catch (e: any) {
+        alert(`Bild speichern fehlgeschlagen: ${e.message}`)
+      }
+    } else {
+      alert(`Bild generieren fehlgeschlagen: ${result.error ?? 'Unbekannter Fehler'}`)
+    }
+    setImageLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
+  }
+
+  async function handleGenerateAllImages() {
+    if (!geminiKey) return
+    const toProcess = items.filter(i => i.id && !i.imageUrl)
+    const all = toProcess.length === 0 ? items.filter(i => i.id) : toProcess
+    if (all.length === 0) return
+    setBulkImageRunning(true); setBulkImageProgress(0); setGenLog([])
+    let ok = 0; let fail = 0
+    for (let i = 0; i < all.length; i++) {
+      const item = all[i]
+      setImageLoadingIds(prev => new Set(prev).add(item.id!))
+      const result = await generateVocabImage(geminiKey, item.en, item.de)
+      if (result.blob) {
+        try {
+          await updateVocabItemImage(token, item.id!, result.blob, item.en)
+          ok++
+          setGenLog(prev => [...prev, `✅ ${item.en}`])
+        } catch (e: any) {
+          fail++
+          setGenLog(prev => [...prev, `❌ ${item.en} – Speichern: ${e.message}`])
+        }
+      } else {
+        fail++
+        setGenLog(prev => [...prev, `❌ ${item.en} – API: ${result.error ?? 'Fehler'}`])
+      }
+      setImageLoadingIds(prev => { const s = new Set(prev); s.delete(item.id!); return s })
+      setBulkImageProgress(i + 1)
+      if (i < all.length - 1) await new Promise(r => setTimeout(r, 800))
+    }
+    setBulkImageRunning(false)
+    setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
     load()
   }
 
@@ -752,16 +809,34 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
       <div className="section-header">
         <h3>📝 Wörter ({items.length})</h3>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {geminiKey && items.length > 0 && (
-            <button className="btn-secondary" onClick={handleGenerateAllAudio} disabled={bulkAudioRunning}>
-              {bulkAudioRunning
-                ? `⏳ Audio ${bulkAudioProgress}/${items.filter(i => !i.audioLangUrl && !i.audioDeUrl).length}...`
-                : '🎙️ Audio für alle'}
-            </button>
-          )}
+          {geminiKey && items.length > 0 && (() => {
+            const missingAudio = items.filter(i => !i.audioLangUrl || !i.audioDeUrl).length
+            const missingImage = items.filter(i => !i.imageUrl).length
+            return (<>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                <button className="btn-secondary" onClick={handleGenerateAllImages} disabled={bulkImageRunning || bulkAudioRunning}>
+                  {bulkImageRunning
+                    ? `⏳ Bilder ${bulkImageProgress}/${missingImage === 0 ? items.length : missingImage}...`
+                    : `🖼️ Bilder${missingImage > 0 ? ` (${missingImage} fehlen)` : ' alle ✅'}`}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                <button className="btn-secondary" onClick={handleGenerateAllAudio} disabled={bulkAudioRunning || bulkImageRunning}>
+                  {bulkAudioRunning
+                    ? `⏳ Audio ${bulkAudioProgress}/${missingAudio === 0 ? items.length : missingAudio}...`
+                    : `🎙️ Audio${missingAudio > 0 ? ` (${missingAudio} fehlen)` : ' alle ✅'}`}
+                </button>
+              </div>
+            </>)
+          })()}
           <button className="btn-secondary" onClick={() => onBulk(unit)}>📋 Bulk-Import</button>
         </div>
       </div>
+      {genLog.length > 0 && (
+        <div style={{ background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.8rem', fontFamily: 'monospace', maxHeight: 160, overflowY: 'auto' }}>
+          {genLog.map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      )}
 
       {/* Add Word Form */}
       <form className="add-word-form" onSubmit={handleAddItem}>
@@ -788,7 +863,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
         <div className="table-wrap word-table-wrap">
           <table className="word-table">
             <thead>
-              <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th>🔊</th><th></th></tr>
+              <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th>🖼️</th><th>🔊</th><th></th></tr>
             </thead>
             <tbody>
               {items.map(item => (
@@ -811,6 +886,19 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
                     </select>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
+                    {item.imageUrl
+                      ? <img src={item.imageUrl} alt={item.en} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, verticalAlign: 'middle' }} />
+                      : <span style={{ fontSize: '0.7rem', color: '#aaa' }}>—</span>
+                    }
+                    {geminiKey && (
+                      <button className="btn-sm" title="Bild generieren" style={{ marginLeft: 4 }}
+                        disabled={imageLoadingIds.has(item.id!) || bulkImageRunning || bulkAudioRunning}
+                        onClick={() => handleGenerateImage(item)}>
+                        {imageLoadingIds.has(item.id!) ? '⏳' : '🎨'}
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     {item.audioLangUrl && (
                       <button className="btn-sm" title={`${item.en} abspielen`}
                         onClick={() => new Audio(item.audioLangUrl!).play()}>🔊</button>
@@ -820,13 +908,9 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
                         onClick={() => new Audio(item.audioDeUrl!).play()} style={{ marginLeft: 2 }}>🔊 DE</button>
                     )}
                     {geminiKey && (
-                      <button
-                        className="btn-sm"
-                        title="Audio generieren"
-                        disabled={audioLoadingIds.has(item.id!) || bulkAudioRunning}
-                        onClick={() => handleGenerateAudio(item)}
-                        style={{ marginLeft: 2 }}
-                      >
+                      <button className="btn-sm" title="Audio generieren"
+                        disabled={audioLoadingIds.has(item.id!) || bulkAudioRunning || bulkImageRunning}
+                        onClick={() => handleGenerateAudio(item)} style={{ marginLeft: 2 }}>
                         {audioLoadingIds.has(item.id!) ? '⏳' : '🎙️'}
                       </button>
                     )}
@@ -865,26 +949,36 @@ function BulkImport({ token, unit, geminiKey, onBack }: {
   async function handleImport() {
     setImporting(true); setResult(''); setImportProgress(0)
     const parsed = parseBulkText(text)
-    try {
-      for (let i = 0; i < parsed.length; i++) {
-        const item = parsed[i]
-        // Bild + Audio parallel generieren (silent fail wenn kein Key)
-        const [imgResult, audioLangBlob, audioDeBlob] = geminiKey
-          ? await Promise.all([
-              generateVocabImage(geminiKey, item.en, item.de),
-              generateVocabAudio(geminiKey, item.en, unit.language || 'en'),
-              generateVocabAudio(geminiKey, item.de, 'de'),
-            ])
-          : [{ blob: null, error: null }, null, null]
+    let ok = 0; const errors: string[] = []
+    for (let i = 0; i < parsed.length; i++) {
+      const item = parsed[i]
+      try {
+        // Sequenziell generieren (rate-limiting): erst Bild, dann Audio lang, dann Audio DE
+        let imgResult: { blob: Blob | null; error: string | null } = { blob: null, error: null }
+        let audioLangBlob: Blob | null = null
+        let audioDeBlob: Blob | null = null
+        if (geminiKey) {
+          imgResult = await generateVocabImage(geminiKey, item.en, item.de)
+          await new Promise(r => setTimeout(r, 300))
+          audioLangBlob = await generateVocabAudio(geminiKey, item.en, unit.language || 'en')
+          await new Promise(r => setTimeout(r, 300))
+          audioDeBlob = await generateVocabAudio(geminiKey, item.de, 'de')
+        }
         await createVocabItemWithImage(token, unit.id, item.en, item.de, item.type, imgResult.blob, audioLangBlob, audioDeBlob)
-        setImportProgress(i + 1)
-        if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 500))
+        ok++
+      } catch (e: any) {
+        errors.push(`❌ ${item.en}: ${e.message ?? 'Fehler'}`)
       }
-      setResult(`✅ ${parsed.length} Wörter importiert!`)
+      setImportProgress(i + 1)
+      if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 600))
+    }
+    if (errors.length === 0) {
+      setResult(`✅ ${ok} Wörter importiert!`)
       setText(''); setPreview([]); setShowPreview(false)
-    } catch {
-      setResult('❌ Fehler beim Import')
-    } finally { setImporting(false) }
+    } else {
+      setResult(`⚠️ ${ok}/${parsed.length} importiert – ${errors.length} fehlgeschlagen:\n${errors.join('\n')}`)
+    }
+    setImporting(false)
   }
 
   return (
@@ -915,7 +1009,12 @@ function BulkImport({ token, unit, geminiKey, onBack }: {
           />
         </div>
 
-        {result && <p className={result.startsWith('✅') ? 'success-msg' : 'error-msg'}>{result}</p>}
+        {result && (
+          <pre className={result.startsWith('✅') ? 'success-msg' : 'error-msg'}
+            style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '8px 0', fontSize: '0.85rem' }}>
+            {result}
+          </pre>
+        )}
 
         <div className="form-actions">
           <button className="btn-secondary" onClick={handlePreview} disabled={!text.trim()}>
@@ -1175,8 +1274,9 @@ interface WizardWord {
   imagePreview: string | null
   audioLangBlob: Blob | null
   audioDeBlob: Blob | null
-  status: 'pending' | 'generating' | 'done' | 'failed'
+  status: 'pending' | 'saving' | 'generating' | 'done' | 'failed'
   errorMsg?: string
+  pbId?: string
 }
 
 function PhotoWizard({ token, geminiKey, onDone, onBack }: {
@@ -1197,6 +1297,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   const [saveProgress, setSaveProgress] = useState(0)
   const [saveDone, setSaveDone] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [savedUnitId, setSavedUnitId] = useState<string | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
@@ -1241,12 +1342,49 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     setWords(w => [...w, { en: '', de: '', type: 'word', imageBlob: null, imagePreview: null, audioLangBlob: null, audioDeBlob: null, status: 'pending' }])
   }
 
+  async function handleSaveTextAndProceed() {
+    if (!unitForm.title.trim()) { setSaveError('Bitte Titel eingeben'); return }
+    setSaving(true); setSaveError('')
+    try {
+      const unit = await createVocabUnit(token, {
+        title: unitForm.title.trim(), subtitle: '', emoji: unitForm.emoji,
+        targetUser: unitForm.targetUser, language: unitForm.language, active: unitForm.active, sortOrder: 99,
+      })
+      const validWords = words.filter(w => w.en.trim() && w.de.trim())
+      // Sequenziell statt Promise.all: ein fehlgeschlagenes Wort bricht nicht alles ab
+      const savedMap: Record<number, string> = {}
+      for (let i = 0; i < validWords.length; i++) {
+        try {
+          const r = await createVocabItem(token, { unitId: unit.id, en: validWords[i].en, de: validWords[i].de, type: validWords[i].type })
+          savedMap[i] = r.id
+        } catch { /* dieses Wort überspringen, weiter */ }
+      }
+      if (Object.keys(savedMap).length === 0) {
+        setSaveError('Kein einziges Wort konnte gespeichert werden – bitte nochmal versuchen')
+        setSaving(false)
+        return
+      }
+      setWords(prev => {
+        let vIdx = 0
+        return prev.map(w => {
+          if (!w.en.trim() || !w.de.trim()) return w
+          const pbId = savedMap[vIdx++]
+          return pbId ? { ...w, pbId } : w
+        })
+      })
+      setSavedUnitId(unit.id)
+      setStep('generate')
+    } catch (err: any) {
+      setSaveError(err.message || 'Speichern fehlgeschlagen')
+    } finally { setSaving(false) }
+  }
+
   async function handleGenerate() {
-    setStep('generate')
     setGenRunning(true)
     setGenProgress(0)
     const updated = [...words]
     for (let i = 0; i < updated.length; i++) {
+      if (!updated[i].pbId) continue
       updated[i] = { ...updated[i], status: 'generating' }
       setWords([...updated])
       // Bild + beide Audios parallel generieren
@@ -1255,6 +1393,10 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
         generateVocabAudio(geminiKey, updated[i].en, unitForm.language || 'en'),
         generateVocabAudio(geminiKey, updated[i].de, 'de'),
       ])
+      // Sofort in PocketBase patchen
+      try {
+        await updateVocabItemMedia(token, updated[i].pbId!, imgResult.blob, audioLangBlob, audioDeBlob, updated[i].en, updated[i].de)
+      } catch { /* silent — Wort bleibt gespeichert, Media optional */ }
       updated[i] = {
         ...updated[i],
         imageBlob: imgResult.blob,
@@ -1271,26 +1413,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
     }
     setGenRunning(false)
     setGenDone(true)
-  }
-
-  async function handleSave() {
-    if (!unitForm.title.trim()) { setSaveError('Bitte Titel eingeben'); return }
-    setSaving(true); setSaveError(''); setSaveProgress(0)
-    try {
-      const unit = await createVocabUnit(token, {
-        title: unitForm.title.trim(), subtitle: '', emoji: unitForm.emoji,
-        targetUser: unitForm.targetUser, language: unitForm.language, active: unitForm.active, sortOrder: 99,
-      })
-      const validWords = words.filter(w => w.en.trim() && w.de.trim())
-      for (let i = 0; i < validWords.length; i++) {
-        const w = validWords[i]
-        await createVocabItemWithImage(token, unit.id, w.en, w.de, w.type, w.imageBlob, w.audioLangBlob, w.audioDeBlob)
-        setSaveProgress(i + 1)
-      }
-      setSaveDone(true)
-    } catch (err: any) {
-      setSaveError(err.message || 'Speichern fehlgeschlagen')
-    } finally { setSaving(false) }
+    setSaveDone(true)
   }
 
   if (saveDone) {
@@ -1417,32 +1540,45 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
               </tbody>
             </table>
           </div>
+          {saveError && <p className="error-msg">{saveError}</p>}
           <div className="form-actions" style={{ marginTop: 16 }}>
-            <button className="btn-primary" onClick={handleGenerate}
-              disabled={words.length === 0 || !unitForm.title.trim()}>
-              🎨 Bilder &amp; Audio generieren →
+            <button className="btn-primary" onClick={handleSaveTextAndProceed}
+              disabled={words.length === 0 || !unitForm.title.trim() || saving}>
+              {saving ? '💾 Speichere Wörter...' : '→ Weiter (Wörter speichern)'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 3: Generate & Save */}
+      {/* Step 3: Bilder & Audio generieren */}
       {step === 'generate' && (
         <div className="form-card">
-          {genRunning && (
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ marginBottom: 8 }}>⏳ Generiere Bild &amp; Audio {genProgress + 1} von {words.length}...</p>
-              <div className="progress-bar-wrap">
-                <div className="progress-bar-fill" style={{ width: `${(genProgress / words.length) * 100}%` }} />
+          {!genRunning && !genDone && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ color: 'var(--text-dim)', marginBottom: 16 }}>
+                ✅ {words.filter(w => w.pbId).length} Wörter gespeichert. Jetzt Bilder &amp; Audio generieren:
+              </p>
+              <div className="form-actions">
+                <button className="btn-primary" onClick={handleGenerate}>
+                  🎨 Bilder &amp; Audio generieren
+                </button>
               </div>
             </div>
           )}
-          {genDone && !saving && !saveDone && (
+          {genRunning && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ marginBottom: 8 }}>⏳ Generiere &amp; speichere {genProgress + 1} von {words.filter(w => w.pbId).length}...</p>
+              <div className="progress-bar-wrap">
+                <div className="progress-bar-fill" style={{ width: `${(genProgress / words.filter(w => w.pbId).length) * 100}%` }} />
+              </div>
+            </div>
+          )}
+          {genDone && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <span className="success-msg" style={{ margin: 0 }}>✅ {words.filter(w => w.status === 'done').length} Bilder generiert</span>
                 {words.filter(w => w.status === 'failed').length > 0 && (
-                  <span className="error-msg" style={{ margin: 0 }}>⚠️ {words.filter(w => w.status === 'failed').length} fehlgeschlagen (werden ohne Bild gespeichert)</span>
+                  <span className="error-msg" style={{ margin: 0 }}>⚠️ {words.filter(w => w.status === 'failed').length} ohne Bild</span>
                 )}
               </div>
               {words.some(w => w.status === 'failed' && w.errorMsg) && (
@@ -1461,20 +1597,6 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-          {saving && (
-            <div style={{ marginBottom: 16 }}>
-              <p>💾 Speichere {saveProgress} / {words.filter(w => w.en && w.de).length}...</p>
-              <div className="progress-bar-wrap">
-                <div className="progress-bar-fill" style={{ width: `${(saveProgress / words.filter(w => w.en && w.de).length) * 100}%` }} />
-              </div>
-            </div>
-          )}
-          {saveError && <p className="error-msg">{saveError}</p>}
-          {genDone && !saving && !saveDone && (
-            <div className="form-actions">
-              <button className="btn-primary" onClick={handleSave}>💾 In PocketBase speichern</button>
             </div>
           )}
         </div>
