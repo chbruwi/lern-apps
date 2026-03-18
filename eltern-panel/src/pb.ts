@@ -504,7 +504,7 @@ export async function fetchWordProgress(
   // (PocketBase v0.23 unterstützt keine mehrschichtigen Relation-Filter)
   const idSet = new Set(vocabItemIds)
   const res = await fetch(
-    `${PB_URL}/api/collections/word_progress/records?perPage=500`,
+    `${PB_URL}/api/collections/word_progress/records?sort=-created&perPage=500`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
   if (!res.ok) {
