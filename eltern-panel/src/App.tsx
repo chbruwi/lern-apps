@@ -6,9 +6,9 @@ import {
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
-  createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, bulkImportVocab, parseBulkText,
+  createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, updateVocabItemWords, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
-  fetchWordProgress, WordProgressEntry,
+  fetchWordProgress, WordProgressEntry, WordPair,
 } from './pb'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -591,6 +591,8 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
   const [imageLoadingIds, setImageLoadingIds] = useState<Set<string>>(new Set())
   const [bulkImageRunning, setBulkImageRunning] = useState(false)
   const [bulkImageProgress, setBulkImageProgress] = useState(0)
+  const [bulkDecodeRunning, setBulkDecodeRunning] = useState(false)
+  const [bulkDecodeProgress, setBulkDecodeProgress] = useState(0)
   const [genLog, setGenLog] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'words' | 'lernstand'>('words')
   const [wordProgress, setWordProgress] = useState<WordProgressEntry[]>([])
@@ -715,6 +717,34 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
       if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 500))
     }
     setBulkAudioRunning(false)
+    setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
+    load()
+  }
+
+  async function handleGenerateAllDecoding() {
+    if (!geminiKey) return
+    // Nur Phrasen dekodieren; fehlende zuerst, sonst alle (zum Neugenerieren)
+    const phrases = items.filter(i => i.id && i.type === 'phrase')
+    const missing = phrases.filter(i => !i.words || i.words.length === 0)
+    const toProcess = missing.length > 0 ? missing : phrases
+    if (toProcess.length === 0) return
+    setBulkDecodeRunning(true); setBulkDecodeProgress(0); setGenLog([])
+    let ok = 0; let fail = 0
+    for (let i = 0; i < toProcess.length; i++) {
+      const item = toProcess[i]
+      try {
+        const pairs = await generateDecoding(geminiKey, item.en, item.de, unit.language || 'en')
+        await updateVocabItemWords(token, item.id!, pairs)
+        ok++
+        setGenLog(prev => [...prev, `✅ ${item.en} (${pairs.length} Häppchen)`])
+      } catch (e: any) {
+        fail++
+        setGenLog(prev => [...prev, `❌ ${item.en} – ${e.message ?? 'Fehler'}`])
+      }
+      setBulkDecodeProgress(i + 1)
+      if (i < toProcess.length - 1) await new Promise(r => setTimeout(r, 500))
+    }
+    setBulkDecodeRunning(false)
     setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
     load()
   }
@@ -847,6 +877,8 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
           {geminiKey && items.length > 0 && (() => {
             const missingAudio = items.filter(i => !i.audioLangUrl || !i.audioDeUrl).length
             const missingImage = items.filter(i => !i.imageUrl).length
+            const phrases = items.filter(i => i.type === 'phrase')
+            const missingDecode = phrases.filter(i => !i.words || i.words.length === 0).length
             return (<>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
                 <button className="btn-secondary" onClick={handleGenerateAllImages} disabled={bulkImageRunning || bulkAudioRunning}>
@@ -862,6 +894,15 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
                     : `🎙️ Audio${missingAudio > 0 ? ` (${missingAudio} fehlen)` : ' alle ✅'}`}
                 </button>
               </div>
+              {phrases.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                  <button className="btn-secondary" onClick={handleGenerateAllDecoding} disabled={bulkDecodeRunning || bulkAudioRunning || bulkImageRunning} title="Wort-für-Wort-Übersetzung der Sätze (für den De-Kodieren-Modus)">
+                    {bulkDecodeRunning
+                      ? `⏳ De-Kodierung ${bulkDecodeProgress}/${missingDecode === 0 ? phrases.length : missingDecode}...`
+                      : `🔤 De-Kodierung${missingDecode > 0 ? ` (${missingDecode} fehlen)` : ' alle ✅'}`}
+                  </button>
+                </div>
+              )}
             </>)
           })()}
           <button className="btn-secondary" onClick={() => onBulk(unit)}>📋 Bulk-Import</button>
@@ -1364,6 +1405,42 @@ async function ocrVocabFromPhoto(apiKey: string, imageBase64: string): Promise<{
       : 'word'
     return { en, de, type: detectedType }
   }).filter((item: any) => item.en || item.de)
+}
+
+// ─── De-Kodierung (Wort-für-Wort) via Gemini ──────────────────────────────────
+const LANG_NAME: Record<string, string> = { en: 'English', fr: 'French', es: 'Spanish', it: 'Italian' }
+
+async function generateDecoding(apiKey: string, sentence: string, de: string, lang: string): Promise<WordPair[]> {
+  const langName = LANG_NAME[lang] ?? 'the source'
+  const prompt =
+    `Break the following ${langName} sentence into its meaningful chunks IN THE ORIGINAL WORD ORDER, ` +
+    `and give a LITERAL German translation of each chunk (Birkenbihl-style decoding — keep the source order, ` +
+    `translate word-for-word/literally, NOT idiomatically). Keep chunks small (usually 1-2 words). ` +
+    `\nSentence (${langName}): "${sentence}"\nNatural German meaning (for context): "${de}"\n` +
+    `Return ONLY a raw JSON array covering the WHOLE sentence in order, like: ` +
+    `[{"s":"<source chunk>","de":"<literal German>"}]. No markdown, no explanation.`
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`De-Kodierung Fehler (${res.status}): ${err?.error?.message ?? ''}`)
+  }
+  const data = await res.json()
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const match = text.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error('Keine De-Kodierung erhalten')
+  const raw = JSON.parse(match[0])
+  const pairs: WordPair[] = (Array.isArray(raw) ? raw : [])
+    .map((p: any) => ({ s: String(p.s ?? p.source ?? p.fr ?? p.en ?? '').trim(), de: String(p.de ?? p.german ?? p.translation ?? '').trim() }))
+    .filter((p: WordPair) => p.s && p.de)
+  if (pairs.length === 0) throw new Error('Leere De-Kodierung')
+  return pairs
 }
 
 // ─── Image Generation via Gemini Imagen ───────────────────────────────────────
