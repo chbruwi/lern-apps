@@ -574,9 +574,9 @@ function VocabList({ token, onDetail, onPhoto }: { token: string; onDetail: (u: 
 
 // ─── Vocab Detail ─────────────────────────────────────────────────────────────
 
-function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
+function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPhoto }: {
   token: string; unit: VocabUnit; geminiKey: string;
-  onBack: () => void; onBulk: (u: VocabUnit) => void
+  onBack: () => void; onBulk: (u: VocabUnit) => void; onPhoto: (u: VocabUnit) => void
 }) {
   const [unit, setUnit] = useState(initialUnit)
   const [items, setItems] = useState<VocabItem[]>([])
@@ -865,6 +865,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk }: {
             </>)
           })()}
           <button className="btn-secondary" onClick={() => onBulk(unit)}>📋 Bulk-Import</button>
+          <button className="btn-secondary" onClick={() => onPhoto(unit)}>📸 Aus Foto</button>
         </div>
       </div>
       {genLog.length > 0 && (
@@ -1330,7 +1331,7 @@ ${word}`
 
 // ─── OCR via Gemini Vision ────────────────────────────────────────────────────
 
-async function ocrVocabFromPhoto(apiKey: string, imageBase64: string): Promise<{ en: string; de: string }[]> {
+async function ocrVocabFromPhoto(apiKey: string, imageBase64: string): Promise<{ en: string; de: string; type?: 'word' | 'phrase' }[]> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
@@ -1456,10 +1457,12 @@ interface WizardWord {
   pbId?: string
 }
 
-function PhotoWizard({ token, geminiKey, onDone, onBack }: {
-  token: string; geminiKey: string
+function PhotoWizard({ token, geminiKey, unit, onDone, onBack }: {
+  token: string; geminiKey: string; unit?: VocabUnit
   onDone: () => void; onBack: () => void
 }) {
+  // Erweitern-Modus: Wörter werden an eine bestehende Unit angehängt (kein neues Unit-Formular).
+  const appendMode = !!unit
   type Step = 'upload' | 'review' | 'generate'
   const [step, setStep] = useState<Step>('upload')
   const [ocrLoading, setOcrLoading] = useState(false)
@@ -1477,6 +1480,8 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   const [savedUnitId, setSavedUnitId] = useState<string | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
+  // Audio-Sprache: im Erweitern-Modus aus der Ziel-Unit, sonst aus dem Formular
+  const genLang = (appendMode ? unit!.language : unitForm.language) || 'en'
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1520,10 +1525,11 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   }
 
   async function handleSaveTextAndProceed() {
-    if (!unitForm.title.trim()) { setSaveError('Bitte Titel eingeben'); return }
+    if (!appendMode && !unitForm.title.trim()) { setSaveError('Bitte Titel eingeben'); return }
     setSaving(true); setSaveError('')
     try {
-      const unit = await createVocabUnit(token, {
+      // Erweitern-Modus: bestehende Unit nutzen. Sonst: neue Unit anlegen.
+      const targetUnit = appendMode ? unit! : await createVocabUnit(token, {
         title: unitForm.title.trim(), subtitle: '', emoji: unitForm.emoji,
         targetUser: unitForm.targetUser, language: unitForm.language, active: unitForm.active, sortOrder: 99,
       })
@@ -1532,7 +1538,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       const savedMap: Record<number, string> = {}
       for (let i = 0; i < validWords.length; i++) {
         try {
-          const r = await createVocabItem(token, { unitId: unit.id, en: validWords[i].en, de: validWords[i].de, type: validWords[i].type })
+          const r = await createVocabItem(token, { unitId: targetUnit.id, en: validWords[i].en, de: validWords[i].de, type: validWords[i].type })
           savedMap[i] = r.id
         } catch { /* dieses Wort überspringen, weiter */ }
       }
@@ -1549,7 +1555,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
           return pbId ? { ...w, pbId } : w
         })
       })
-      setSavedUnitId(unit.id)
+      setSavedUnitId(targetUnit.id)
       setStep('generate')
     } catch (err: any) {
       setSaveError(err.message || 'Speichern fehlgeschlagen')
@@ -1567,7 +1573,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       // Bild + beide Audios parallel generieren
       const [imgResult, audioLangBlob, audioDeBlob] = await Promise.all([
         generateVocabImage(geminiKey, updated[i].en, updated[i].de),
-        generateVocabAudio(geminiKey, updated[i].en, unitForm.language || 'en'),
+        generateVocabAudio(geminiKey, updated[i].en, genLang),
         generateVocabAudio(geminiKey, updated[i].de, 'de'),
       ])
       // Sofort in PocketBase patchen
@@ -1598,9 +1604,12 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       <div className="content">
         <div className="empty-card" style={{ textAlign: 'center', padding: 48 }}>
           <div style={{ fontSize: 48 }}>✅</div>
-          <h3 style={{ marginTop: 12 }}>Unit erstellt!</h3>
-          <p>{unitForm.emoji} {unitForm.title} mit {words.filter(w => w.en && w.de).length} Wörtern</p>
-          <button className="btn-primary" style={{ marginTop: 16 }} onClick={onDone}>Zur Unit-Liste</button>
+          <h3 style={{ marginTop: 12 }}>{appendMode ? 'Wörter hinzugefügt!' : 'Unit erstellt!'}</h3>
+          <p>
+            {appendMode ? unit!.emoji : unitForm.emoji} {appendMode ? unit!.title : unitForm.title}
+            {appendMode ? ' um ' : ' mit '}{words.filter(w => w.en && w.de).length} Wörter{appendMode ? ' erweitert' : 'n'}
+          </p>
+          <button className="btn-primary" style={{ marginTop: 16 }} onClick={onDone}>{appendMode ? 'Zur Unit' : 'Zur Unit-Liste'}</button>
         </div>
       </div>
     )
@@ -1609,7 +1618,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
   return (
     <div className="content">
       <div className="page-header">
-        <h2 className="page-title">📸 Neue Unit aus Foto</h2>
+        <h2 className="page-title">{appendMode ? `📸 Foto → ${unit!.emoji} ${unit!.title}` : '📸 Neue Unit aus Foto'}</h2>
         <button className="btn-secondary" onClick={onBack}>← Zurück</button>
       </div>
 
@@ -1658,6 +1667,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
       {/* Step 2: Review */}
       {step === 'review' && (
         <div className="form-card">
+          {!appendMode && (
           <div className="form-row" style={{ marginBottom: 16 }}>
             <div className="form-group form-group-sm">
               <label>Emoji</label>
@@ -1689,6 +1699,13 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
               </select>
             </div>
           </div>
+          )}
+
+          {appendMode && (
+            <div className="warning-box" style={{ marginBottom: 16 }}>
+              ➕ Wörter werden zu <strong>{unit!.emoji} {unit!.title}</strong> hinzugefügt.
+            </div>
+          )}
 
           <div className="section-header" style={{ marginBottom: 8 }}>
             <h4>📝 {words.length} Wörter erkannt</h4>
@@ -1720,7 +1737,7 @@ function PhotoWizard({ token, geminiKey, onDone, onBack }: {
           {saveError && <p className="error-msg">{saveError}</p>}
           <div className="form-actions" style={{ marginTop: 16 }}>
             <button className="btn-primary" onClick={handleSaveTextAndProceed}
-              disabled={words.length === 0 || !unitForm.title.trim() || saving}>
+              disabled={words.length === 0 || (!appendMode && !unitForm.title.trim()) || saving}>
               {saving ? '💾 Speichere Wörter...' : '→ Weiter (Wörter speichern)'}
             </button>
           </div>
@@ -1795,6 +1812,8 @@ export default function App() {
   const [editingMathUnit, setEditingMathUnit] = useState<MathUnit | null | 'new'>(null)
   const [detailVocabUnit, setDetailVocabUnit] = useState<VocabUnit | null>(null)
   const [bulkVocabUnit, setBulkVocabUnit] = useState<VocabUnit | null>(null)
+  // Wenn gesetzt: Foto-Wizard hängt an diese bestehende Unit an (sonst: neue Unit)
+  const [photoVocabUnit, setPhotoVocabUnit] = useState<VocabUnit | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [geminiKey, setGeminiKeyState] = useState(getGeminiKey)
 
@@ -1880,6 +1899,7 @@ export default function App() {
             geminiKey={geminiKey}
             onBack={() => { setDetailVocabUnit(null); setScreen('vocab-list') }}
             onBulk={u => { setBulkVocabUnit(u); setScreen('vocab-bulk') }}
+            onPhoto={u => { setPhotoVocabUnit(u); setScreen('vocab-photo') }}
           />
         )}
 
@@ -1900,12 +1920,24 @@ export default function App() {
           <PhotoWizard
             token={parent.token}
             geminiKey={geminiKey}
-            onDone={() => setScreen('vocab-list')}
-            onBack={() => setScreen('vocab-list')}
+            unit={photoVocabUnit ?? undefined}
+            onDone={() => {
+              // Erweitern-Modus → zurück in die Unit-Detailansicht (zeigt neue Wörter), sonst zur Liste
+              const target = photoVocabUnit
+              setPhotoVocabUnit(null)
+              if (target) { setDetailVocabUnit(target); setScreen('vocab-detail') }
+              else setScreen('vocab-list')
+            }}
+            onBack={() => {
+              const target = photoVocabUnit
+              setPhotoVocabUnit(null)
+              if (target) { setDetailVocabUnit(target); setScreen('vocab-detail') }
+              else setScreen('vocab-list')
+            }}
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.7.2</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.8.0</div>
     </div>
   )
 }
