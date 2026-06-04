@@ -31,16 +31,7 @@ lern-apps-source/
 ├── CLAUDE.md                     # Diese Datei
 ├── README.md
 │
-├── franzoesisch/                 # Französisch Hobbys (Birkenbihl – Les Loisirs)
-│   ├── index.html                # Build-Output (deployed)
-│   ├── package.json / vite.config.ts / tsconfig.json
-│   └── src/
-│       ├── index.html            # Vite entry point
-│       ├── main.tsx
-│       ├── pb.ts                 # PocketBase API Helper
-│       ├── data.ts               # 36 Vokabeln (SVG) + 5 Lektionen × 5 Sätze
-│       ├── App.tsx               # Login + 4 Spielmodi + Münzsystem
-│       └── App.css               # Light Theme (Baloo 2 + Nunito, Blau/Orange)
+│   (franzoesisch/ wurde entfernt – Memory + De-Kodieren sind jetzt in VocabHero)
 │
 ├── eltern-panel/                 # Eltern-Verwaltungs-Panel
 │   ├── index.html                # Build-Output (deployed)
@@ -164,6 +155,7 @@ first aid = erste Hilfe
 ```
 Parser: Split bei `=`, `[phrase]`-Suffix erkannt → Preview → sequenziell importiert.
 
+- **🔤 De-Kodierung generieren** (Button in der Unit-Detailansicht, neben Bilder/Audio): erzeugt für alle Phrase-Items ohne `words` die Wort-für-Wort-Tabelle per Gemini (`gemini-2.5-flash`, `generateDecoding()` → `[{s,de}]`) und speichert sie via `updateVocabItemWords()`. Versorgt den VocabHero **De-Kodieren**-Modus. Zeigt „(X fehlen)" / „alle ✅".
 - **📸 Foto-Wizard:** Foto der Vokabelliste → OCR → Bilder + Audio generieren → in PocketBase speichern
   - 3-Schritt-Wizard: Foto | Prüfen | Generieren
   - OCR: `gemini-2.0-flash` Vision API → JSON-Array `[{en, de, type}]`
@@ -243,11 +235,14 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-pr
   - Footer: `"Französisch ↔ Deutsch"` statt hardcodiert `"Englisch ↔ Deutsch"`
   - `LANG_LABELS`-Map und `getLangLabel()` Helper in App.tsx
   - Französische Vokabeln gehen in das `en`-Feld von `vocab_items` (semantisch: Quellsprache)
-- **4 Spielmodi:**
+- **Spielmodi:**
   - 🃏 **Karteikarten** — Flip-Karte mit Bild auf **beiden Seiten** (EN + DE), dann Gewusst/Nochmal
   - 🔗 **Match-It** — 6 Paare zuordnen; linke Seite zeigt Bild + Text wenn EN, rechts nur Text
+  - 🧠 **Memory** — klassisches Paare-Merken (Bild↔Wort bzw. Quellwort↔DE). Nutzt Wort-Items (`type!=='phrase'`); erscheint nur ab ≥3 Wort-Items. 6 Paare, +2🪙/Paar, +5🪙 Abschluss.
   - ⚡ **Speed-Quiz** — Multiple Choice, Bild immer sichtbar (egal ob EN- oder DE-Frage)
   - 🔤 **Buchstaben-Salat** — Buchstaben sortieren; bei EN-Units: zufällige Richtung (EN oder DE scramble); bei FR/ES/IT-Units: immer DE als Hinweis, Hauptwort scramble (Artikel werden vor dem Scramble abgezogen: la/le/les/l'/…)
+  - 🧩 **De-Kodieren** — Sätze Wort-für-Wort (Birkenbihl). Nutzt Phrase-Items mit `words`-Dekodierung + generiertes Audio. Erscheint **nur** wenn die Unit dekodierte Phrasen hat. Wort-Tabelle aus `VocabItem.words` (`[{s,de}]`), 🔊 spielt `audioLangUrl`, +1🪙 beim ersten Vorlesen pro Satz.
+  - Memory/De-Kodieren sind datengetrieben sichtbar (`GAMES[].available(vocab)` filtert das Menü).
 - Lazy Vocab-Load: Wörter werden erst beim Unit-Start geladen (`fetchVocabItems()`)
 - Beide Richtungen: EN→DE und DE→EN zufällig gemischt
 - Stale-While-Revalidate: Units gecacht in localStorage (`lernheld-vocab-units-v1`)
@@ -277,30 +272,12 @@ if (loaded.length === 1) {
 
 ---
 
-### 🇫🇷 Français (`franzoesisch/`)
-**Zielgruppe:** Andrin + Fiona
-**URL:** https://chbruwi.github.io/lern-apps/franzoesisch/
-**Design:** Light Theme, cremefarbener Hintergrund (`#fef9f0`), Blau `#3b82f6`, Orange `#e85d3a`, Baloo 2 + Nunito Fonts
-
-**Thema:** Birkenbihl-Methode – Les Loisirs (Hobbys & Freizeit auf Französisch)
-
-**Features:**
-- 4 Spielmodi:
-  - 🔤 **De-Kodieren** — 5 Lektionen × 5 Sätze mit Wort-für-Wort-Tabelle + Web Speech API (`fr-FR`, rate 0.7), +1🪙 pro Satz
-  - 🖼️ **Bild-Vokabeln** — 36 SVG-Karten antippen → vorlesen + +1🪙
-  - 🃏 **Memory** — 6 zufällige Paare (Bild ↔ Wort), +2🪙/Paar + +5🪙 Abschluss
-  - ❓ **Bild-Quiz** — 15 Fragen: Bild zeigen, 4 Antworten (Multiple Choice), +2🪙 richtig + +5🪙 Abschluss
-- Shared Coins: localStorage Key `lernheld-v1-coins`
-- PocketBase Login + Sync (coins + xp + level, 50 XP/Level)
-- Activity Log nach jedem Spiel (`logActivity`)
-
-**Datenbasis (`data.ts`):**
-- 36 Vokabeln: `fr`, `de`, `emoji`, `svgData` (Base64 SVG, ~90 KB Rohdaten)
-- 5 Lektionen: `title`, `sentences[]` mit `fr`, `de`, `lit`, `words` (WordPair-Array)
-- Extrahiert aus: `/Users/christian/Projects/LernApps/französisch/birkenbihl-bilder.html`
-
-**Sync-Details:**
-- `syncToServer(pbUser, coins, totalScore, level)` — totalScore als XP, 50 XP/Level
+### 🇫🇷 Français — ENTFERNT
+Die eigenständige `franzoesisch`-App wurde abgelöst. Ihre beiden charakteristischen Modi
+leben jetzt **datengetrieben in VocabHero**:
+- **Memory** → läuft auf den Wort-Items jeder Unit (Bild↔Wort).
+- **De-Kodieren** → Wort-für-Wort-Tabelle aus dem neuen `vocab_items.words`-Feld, erzeugt per Gemini im Eltern-Panel (Button „🔤 De-Kodierung").
+Es wurden **keine** Inhalte der alten App migriert; VocabHero nutzt seine eigenen Phrasen/Vokabeln.
 
 ---
 
@@ -459,6 +436,7 @@ services:
 | image | file (max 1, `image/*`) | Optional – vom Foto-Wizard via Gemini generiert |
 | audio_lang | file (max 1) | Aussprache `en`-Feld (EN/FR/ES/IT) als WAV |
 | audio_de | file (max 1) | Aussprache `de`-Feld (Deutsch) als WAV |
+| words | json | Wort-für-Wort-Dekodierung (nur Phrasen): `[{"s":"<Quell-Häppchen>","de":"<wörtlich DE>"}]`. Erzeugt per Gemini im Eltern-Panel (Button „🔤 De-Kodierung"). Genutzt vom VocabHero De-Kodieren-Modus. |
 
 **API-Regeln:** identisch wie `math_units`
 
@@ -637,7 +615,6 @@ logActivity(pbUser, {
 | `mathe-held` | `coins` + `xp` + `level` | 60 XP/Level |
 | `wort-abenteuer` | `xp` (=totalScore) + `level` | 100 Punkte/Level |
 | `vocabhero` | `xp` (=totalScore) + `level` | 120 Punkte/Level |
-| `franzoesisch` | `coins` + `xp` + `level` | 50 XP/Level |
 | `spielecke` | `coins` only | — |
 
 **Shared Coins:** localStorage Key `lernheld-v1-coins` (alle Apps lesen/schreiben denselben Key)

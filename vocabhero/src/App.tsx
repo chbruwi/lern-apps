@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
-import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, PbUser, VocabItem, VocabUnit } from './pb'
+import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, PbUser, VocabItem, VocabUnit, WordPair } from './pb'
 
 // Shared coin storage (same key as Mathe-Held & Spielecke)
 const SK_COINS = 'lernheld-v1-coins'
@@ -1038,19 +1038,151 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack, onRetry, onWordResult
 // MAIN APP
 // ============================================================
 
-type View = 'menu' | 'flip' | 'match' | 'speed' | 'scramble' | 'pronunciation'
+// ============================================================
+// MODULE: MEMORY (Bild/Wort ↔ Übersetzung – Paare merken)
+// ============================================================
+interface MemCard { key: number; itemIdx: number; side: 'q' | 'a'; faceUp: boolean; matched: boolean }
 
-const GAMES = [
-  { id: 'flip' as View,         title: 'Karteikarten',    emoji: '🃏', desc: 'Flip & learn',           gradient: 'linear-gradient(135deg, #f472b6, #e879f9)' },
-  { id: 'match' as View,        title: 'Match-It',        emoji: '🔗', desc: 'Paare verbinden',        gradient: 'linear-gradient(135deg, #60a5fa, #818cf8)' },
-  { id: 'speed' as View,        title: 'Speed-Quiz',      emoji: '⚡', desc: 'Schnell antworten',      gradient: 'linear-gradient(135deg, #fbbf24, #f97316)' },
-  { id: 'scramble' as View,     title: 'Buchstaben-Salat',emoji: '🔤', desc: 'Wörter zusammensetzen',  gradient: 'linear-gradient(135deg, #34d399, #2dd4bf)' },
-  { id: 'pronunciation' as View,title: 'Aussprache',      emoji: '🎤', desc: 'Mit KI üben',            gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)' },
+function buildMemoryDeck(vocab: VocabItem[]): { cards: MemCard[]; items: VocabItem[] } {
+  const pool = vocab.filter(v => v.type !== 'phrase')
+  const picked = shuffle(pool).slice(0, 6)
+  const cards: MemCard[] = []
+  picked.forEach((_, idx) => {
+    cards.push({ key: idx * 2,     itemIdx: idx, side: 'q', faceUp: false, matched: false })
+    cards.push({ key: idx * 2 + 1, itemIdx: idx, side: 'a', faceUp: false, matched: false })
+  })
+  return { cards: shuffle(cards), items: picked }
+}
+
+function Memory({ vocab, onScore, onBack, onRestart }: { vocab: VocabItem[]; onScore: (n: number) => void; onBack: () => void; onRestart: () => void }) {
+  const [deck] = useState(() => buildMemoryDeck(vocab))
+  const items = deck.items
+  const [cards, setCards] = useState<MemCard[]>(deck.cards)
+  const [selected, setSelected] = useState<number[]>([])
+  const [locked, setLocked] = useState(false)
+  const [pairs, setPairs] = useState(0)
+  const total = items.length
+
+  function flip(key: number) {
+    if (locked) return
+    const card = cards.find(c => c.key === key)
+    if (!card || card.faceUp || card.matched) return
+    const next = cards.map(c => c.key === key ? { ...c, faceUp: true } : c)
+    setCards(next)
+    const sel = [...selected, key]
+    if (sel.length < 2) { setSelected(sel); return }
+    setLocked(true)
+    const [k1, k2] = sel
+    const c1 = next.find(c => c.key === k1)!
+    const c2 = next.find(c => c.key === k2)!
+    if (c1.itemIdx === c2.itemIdx && c1.side !== c2.side) {
+      setTimeout(() => {
+        setCards(prev => prev.map(c => c.key === k1 || c.key === k2 ? { ...c, matched: true } : c))
+        const np = pairs + 1
+        setPairs(np); onScore(2); setSelected([]); setLocked(false)
+        if (np === total) setTimeout(() => onScore(5), 300)
+      }, 450)
+    } else {
+      setTimeout(() => {
+        setCards(prev => prev.map(c => c.key === k1 || c.key === k2 ? { ...c, faceUp: false } : c))
+        setSelected([]); setLocked(false)
+      }, 850)
+    }
+  }
+
+  const done = total > 0 && pairs === total
+  return (
+    <div>
+      <Header title="🧠 Memory" onBack={onBack} right={`${pairs}/${total}`} />
+      {done ? (
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <div className="complete-emoji">🎉</div>
+          <h3 style={{ margin: '12px 0' }}>Alle Paare gefunden!</h3>
+          <button onClick={onRestart} style={{ marginTop: 12, padding: '12px 24px', borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff', background: 'linear-gradient(135deg,#f87171,#fb923c)' }}>🔄 Nochmal</button>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: 12 }}>
+          {cards.map(card => {
+            const item = items[card.itemIdx]
+            const faceUp = card.faceUp || card.matched
+            return (
+              <button key={card.key} onClick={() => flip(card.key)} disabled={card.matched}
+                style={{ aspectRatio: '1', borderRadius: 14, border: 'none', cursor: card.matched ? 'default' : 'pointer',
+                  background: faceUp ? '#fff' : 'linear-gradient(135deg,#a78bfa,#7c3aed)', opacity: card.matched ? 0.4 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                {faceUp ? (
+                  card.side === 'q'
+                    ? (item.imageUrl
+                        ? <img src={item.imageUrl} alt={item.en} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8 }} />
+                        : <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#3b0764', textAlign: 'center' }}>{item.en}</span>)
+                    : <span style={{ fontWeight: 600, color: '#444', textAlign: 'center' }}>{item.de}</span>
+                ) : <span style={{ fontSize: '1.6rem' }}>❓</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// MODULE: DE-KODIEREN (Sätze Wort für Wort verstehen)
+// ============================================================
+function DeKodieren({ vocab, onScore, onBack }: { vocab: VocabItem[]; lang: string; onScore: (n: number) => void; onBack: () => void }) {
+  const phrases = vocab.filter(v => v.type === 'phrase' && v.words && v.words.length > 0)
+  const [awarded, setAwarded] = useState<Set<number>>(new Set())
+
+  function playAndAward(item: VocabItem, idx: number) {
+    if (item.audioLangUrl) { const a = new Audio(item.audioLangUrl); a.play().catch(() => {}) }
+    if (!awarded.has(idx)) { setAwarded(prev => new Set(prev).add(idx)); onScore(1) }
+  }
+
+  return (
+    <div>
+      <Header title="🧩 De-Kodieren" onBack={onBack} right={`${phrases.length} Sätze`} />
+      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {phrases.map((item, idx) => (
+          <div key={item.id ?? idx} style={{ background: '#fff', borderRadius: 16, padding: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '1.15rem', fontWeight: 700, color: '#3730a3' }}>{item.en}</span>
+              {item.audioLangUrl && (
+                <button onClick={() => playAndAward(item, idx)} className="speaker-btn" title="Vorlesen +1🪙">🔊</button>
+              )}
+            </div>
+            <div style={{ color: '#666', marginTop: 2, marginBottom: 10 }}>{item.de}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {item.words!.map((w: WordPair, j: number) => (
+                <div key={j} style={{ background: '#eef2ff', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 44 }}>
+                  <div style={{ fontWeight: 700, color: '#4338ca' }}>{w.s}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{w.de}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type View = 'menu' | 'flip' | 'match' | 'speed' | 'scramble' | 'pronunciation' | 'memory' | 'dekodieren'
+
+// available: optionale Bedingung – Modus erscheint nur, wenn die Unit passende Daten hat
+const GAMES: { id: View; title: string; emoji: string; desc: string; gradient: string; available?: (vocab: VocabItem[]) => boolean }[] = [
+  { id: 'flip',         title: 'Karteikarten',    emoji: '🃏', desc: 'Flip & learn',           gradient: 'linear-gradient(135deg, #f472b6, #e879f9)' },
+  { id: 'match',        title: 'Match-It',        emoji: '🔗', desc: 'Paare verbinden',        gradient: 'linear-gradient(135deg, #60a5fa, #818cf8)' },
+  { id: 'memory',       title: 'Memory',          emoji: '🧠', desc: 'Paare merken',           gradient: 'linear-gradient(135deg, #f87171, #fb923c)', available: v => v.filter(i => i.type !== 'phrase').length >= 3 },
+  { id: 'speed',        title: 'Speed-Quiz',      emoji: '⚡', desc: 'Schnell antworten',      gradient: 'linear-gradient(135deg, #fbbf24, #f97316)' },
+  { id: 'scramble',     title: 'Buchstaben-Salat',emoji: '🔤', desc: 'Wörter zusammensetzen',  gradient: 'linear-gradient(135deg, #34d399, #2dd4bf)' },
+  { id: 'dekodieren',   title: 'De-Kodieren',     emoji: '🧩', desc: 'Sätze Wort für Wort',    gradient: 'linear-gradient(135deg, #38bdf8, #6366f1)', available: v => v.some(i => i.type === 'phrase' && i.words && i.words.length > 0) },
+  { id: 'pronunciation',title: 'Aussprache',      emoji: '🎤', desc: 'Mit KI üben',            gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)' },
 ]
 
 function App() {
   const [view, setView] = useState<View>('menu')
   const [pronunciationKey, setPronunciationKey] = useState(0)
+  const [memoryKey, setMemoryKey] = useState(0)
   const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [loadingVocab, setLoadingVocab] = useState(false)
@@ -1199,6 +1331,8 @@ function App() {
         </div>
         {view === 'flip'         && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
         {view === 'match'        && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'memory'       && <Memory key={memoryKey} vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} onRestart={() => setMemoryKey(k => k + 1)} />}
+        {view === 'dekodieren'   && <DeKodieren vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
         {view === 'speed'        && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
         {view === 'scramble'     && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
         {view === 'pronunciation'&& <AusspracheTrainer key={pronunciationKey} vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onRetry={() => setPronunciationKey(k => k + 1)} onWordResult={handleWordResult} />}
@@ -1223,7 +1357,7 @@ function App() {
       </header>
 
       <div className="menu-grid">
-        {GAMES.map((g, i) => (
+        {GAMES.filter(g => !g.available || g.available(selectedUnit.vocab)).map((g, i) => (
           <button
             key={g.id}
             className="menu-card"

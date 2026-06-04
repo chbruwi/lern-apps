@@ -62,6 +62,11 @@ export function logout() {
 
 // ─── Dynamic Vocab Units ──────────────────────────────────────────────────────
 
+export interface WordPair {
+  s: string   // Quell-Häppchen (Sprache der Unit)
+  de: string  // wörtliche deutsche Entsprechung
+}
+
 export interface VocabItem {
   id?: string
   en: string
@@ -70,6 +75,17 @@ export interface VocabItem {
   imageUrl?: string
   audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
   audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
+  words?: WordPair[]     // Wort-für-Wort-Dekodierung (nur Phrasen)
+}
+
+// PocketBase JSON-Felder kommen mal als Array, mal als String (v0.23) — robust parsen
+function parseWordPairs(val: unknown): WordPair[] | undefined {
+  let v = val
+  if (typeof v === 'string') { try { v = JSON.parse(v) } catch { return undefined } }
+  if (Array.isArray(v) && v.length > 0) {
+    return v.filter((w: any) => w && typeof w.s === 'string' && typeof w.de === 'string')
+  }
+  return undefined
 }
 
 export interface VocabUnit {
@@ -127,6 +143,7 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
     imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}` : undefined,
     audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
     audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
+    words: parseWordPairs(r.words),
   }))
 }
 
