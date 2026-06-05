@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import {
   Parent, Child, MathUnit, VocabUnit, VocabItem, ActivityEntry, Operation,
   parentLogin, getParentAuth, parentLogout,
@@ -593,6 +593,9 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
   const [bulkImageProgress, setBulkImageProgress] = useState(0)
   const [bulkDecodeRunning, setBulkDecodeRunning] = useState(false)
   const [bulkDecodeProgress, setBulkDecodeProgress] = useState(0)
+  const [editDecodeId, setEditDecodeId] = useState<string | null>(null)
+  const [editPairs, setEditPairs] = useState<WordPair[]>([])
+  const [savingDecode, setSavingDecode] = useState(false)
   const [genLog, setGenLog] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'words' | 'lernstand'>('words')
   const [wordProgress, setWordProgress] = useState<WordProgressEntry[]>([])
@@ -747,6 +750,23 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
     setBulkDecodeRunning(false)
     setGenLog(prev => [...prev, `─── Fertig: ${ok} ✅  ${fail} ❌`])
     load()
+  }
+
+  function openDecodeEditor(item: VocabItem) {
+    setEditDecodeId(item.id!)
+    setEditPairs(item.words && item.words.length ? item.words.map(w => ({ ...w })) : [{ s: '', de: '' }])
+  }
+  async function handleSaveDecode() {
+    if (!editDecodeId) return
+    const clean = editPairs.map(p => ({ s: p.s.trim(), de: p.de.trim() })).filter(p => p.s && p.de)
+    setSavingDecode(true)
+    try {
+      await updateVocabItemWords(token, editDecodeId, clean)
+      setEditDecodeId(null); setEditPairs([])
+      load()
+    } catch (e: any) {
+      alert('De-Kodierung speichern fehlgeschlagen: ' + (e.message ?? ''))
+    } finally { setSavingDecode(false) }
   }
 
   async function handleGenerateImage(item: VocabItem) {
@@ -1063,7 +1083,8 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
             </thead>
             <tbody>
               {items.map(item => (
-                <tr key={item.id}>
+                <Fragment key={item.id}>
+                <tr>
                   <td><input className="field field-inline" value={item.en}
                     onChange={e => handleUpdateItem(item.id, 'en', e.target.value)}
                     onBlur={() => handleSaveItem(item.id)} /></td>
@@ -1111,10 +1132,46 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
                       </button>
                     )}
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {item.type === 'phrase' && (
+                      <button className="btn-sm" title="De-Kodierung bearbeiten" style={{ marginRight: 2 }}
+                        onClick={() => editDecodeId === item.id ? setEditDecodeId(null) : openDecodeEditor(item)}>
+                        🧩{item.words && item.words.length ? ` ${item.words.length}` : '＋'}
+                      </button>
+                    )}
                     <button className="btn-sm btn-danger" onClick={() => handleDeleteItem(item.id)}>✕</button>
                   </td>
                 </tr>
+                {editDecodeId === item.id && (
+                  <tr>
+                    <td colSpan={6} style={{ background: '#f8f8ff', padding: 12 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 6 }}>🧩 De-Kodierung – {item.en}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {editPairs.map((p, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input className="field field-inline" placeholder="Quell-Wort" value={p.s}
+                              style={{ flex: 1 }}
+                              onChange={e => setEditPairs(prev => prev.map((q, j) => j === i ? { ...q, s: e.target.value } : q))} />
+                            <span style={{ color: '#888' }}>→</span>
+                            <input className="field field-inline" placeholder="Deutsch (wörtlich)" value={p.de}
+                              style={{ flex: 1 }}
+                              onChange={e => setEditPairs(prev => prev.map((q, j) => j === i ? { ...q, de: e.target.value } : q))} />
+                            <button className="btn-sm btn-danger" title="Häppchen entfernen"
+                              onClick={() => setEditPairs(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        <button className="btn-sm" onClick={() => setEditPairs(prev => [...prev, { s: '', de: '' }])}>+ Häppchen</button>
+                        <button className="btn-primary" disabled={savingDecode} onClick={handleSaveDecode}>
+                          {savingDecode ? '💾 …' : '💾 Speichern'}
+                        </button>
+                        <button className="btn-secondary" onClick={() => { setEditDecodeId(null); setEditPairs([]) }}>Abbrechen</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -2014,7 +2071,7 @@ export default function App() {
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.8.0</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.9.0</div>
     </div>
   )
 }

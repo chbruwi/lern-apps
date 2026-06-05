@@ -1112,10 +1112,12 @@ function Memory({ vocab, onScore, onBack, onRestart }: { vocab: VocabItem[]; onS
                   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
                 {faceUp ? (
                   card.side === 'q'
-                    ? (item.imageUrl
+                    // Quellwort (z.B. Französisch) immer sichtbar – so wird die Sprache geübt
+                    ? <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#3b0764', textAlign: 'center' }}>{item.en}</span>
+                    // Gegenstück: Bild (falls vorhanden), sonst die deutsche Übersetzung
+                    : (item.imageUrl
                         ? <img src={item.imageUrl} alt={item.en} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8 }} />
-                        : <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#3b0764', textAlign: 'center' }}>{item.en}</span>)
-                    : <span style={{ fontWeight: 600, color: '#444', textAlign: 'center' }}>{item.de}</span>
+                        : <span style={{ fontWeight: 600, color: '#444', textAlign: 'center' }}>{item.de}</span>)
                 ) : <span style={{ fontSize: '1.6rem' }}>❓</span>}
               </button>
             )
