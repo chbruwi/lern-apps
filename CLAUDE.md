@@ -248,7 +248,7 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-pr
   - Eltern markieren im Eltern-Panel Wörter/Sätze mit ⭐ (`vocab_items.focus`).
   - **Stufe 1:** Gibt es Fokus-Wörter, die noch nicht „sitzen" → **alle Spiele bekommen nur die Fokus-Wörter** (`practiceVocab = focusItems`).
   - **Stufe 2:** Alle Fokus-Wörter sitzen (oder keine markiert) → alle Wörter.
-  - „Sitzt" = `>= MASTERY_CORRECT` (3) richtige Antworten in `word_progress`, berechnet via `fetchMasteredIds()`. **Karteikarten (`game_mode='flip'`) zählen NICHT mit** — dort schätzt das Kind selbst ein (Gewusst/Nochmal). Nur objektiv geprüfte Spiele (Match-It, Speed-Quiz, Buchstaben-Salat, Aussprache) zählen.
+  - „Sitzt" = `>= MASTERY_CORRECT` (5) richtige Antworten in `word_progress`, berechnet via `fetchMasteredIds()`. **Karteikarten (`game_mode='flip'`) zählen NICHT mit** — dort schätzt das Kind selbst ein (Gewusst/Nochmal). Nur objektiv geprüfte Spiele (Match-It, Speed-Quiz, Buchstaben-Salat, Aussprache) zählen.
   - **Zentrale Umsetzung:** `practiceVocab` wird einmal berechnet und an *alle* Modi gegeben — kein Spiel kennt die Logik selbst. Banner oben zeigt den Stand. Mastery wird bei jeder Rückkehr ins Menü neu geladen.
 - Lazy Vocab-Load: Wörter werden erst beim Unit-Start geladen (`fetchVocabItems()`)
 - Beide Richtungen: EN→DE und DE→EN zufällig gemischt

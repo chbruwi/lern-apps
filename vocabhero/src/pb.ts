@@ -80,7 +80,7 @@ export interface VocabItem {
 }
 
 // Wie oft ein Wort richtig sein muss, damit es als "sitzt" gilt
-export const MASTERY_CORRECT = 3
+export const MASTERY_CORRECT = 5
 
 // PocketBase JSON-Felder kommen mal als Array, mal als String (v0.23) — robust parsen
 function parseWordPairs(val: unknown): WordPair[] | undefined {
