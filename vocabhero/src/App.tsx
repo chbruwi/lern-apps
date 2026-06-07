@@ -122,20 +122,21 @@ function Confetti({ active }: { active: boolean }) {
 // SPEAKER BUTTON
 // ============================================================
 
-// Nur EIN Ton gleichzeitig: ein neuer Klick stoppt den laufenden (kein Überlagern bei Mehrfachklick)
+// Spam-Schutz: während ein Ton läuft (plus ~1,5 s Pause danach) werden weitere
+// Klicks ignoriert. So kann der Ton einmal in Ruhe abspielen und nicht durch
+// hektisches Mehrfach-Tippen ständig neu gestartet werden.
 let currentAudio: HTMLAudioElement | null = null
-let currentOnStop: (() => void) | null = null
-function playOnce(url: string, onStop?: () => void): void {
-  if (currentAudio) {
-    try { currentAudio.pause(); currentAudio.currentTime = 0 } catch { /* ignore */ }
-    const prev = currentOnStop; currentAudio = null; currentOnStop = null; prev?.()  // vorherigen Button zurücksetzen
-  }
+let lastPlayEndAt = 0
+const PLAY_COOLDOWN_MS = 1500
+function playOnce(url: string, onStop?: () => void): boolean {
+  if (currentAudio || Date.now() - lastPlayEndAt < PLAY_COOLDOWN_MS) return false  // läuft noch / Pause nicht um
   const a = new Audio(url)
-  currentAudio = a; currentOnStop = onStop ?? null
-  const done = () => { if (currentAudio === a) { currentAudio = null; currentOnStop = null } onStop?.() }
+  currentAudio = a
+  const done = () => { if (currentAudio === a) { currentAudio = null; lastPlayEndAt = Date.now() } onStop?.() }
   a.onended = done
   a.onerror = done
   a.play().catch(done)
+  return true
 }
 
 function SpeakerButton({ url, label }: { url?: string; label?: string }) {
@@ -143,8 +144,7 @@ function SpeakerButton({ url, label }: { url?: string; label?: string }) {
   if (!url) return null
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation()  // verhindert Karteikarten-Flip beim Klick
-    setPlaying(true)
-    playOnce(url!, () => setPlaying(false))
+    if (playOnce(url!, () => setPlaying(false))) setPlaying(true)  // nur reagieren, wenn wirklich gestartet
   }
   return (
     <button
