@@ -144,7 +144,8 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
     en: r.en,
     de: r.de,
     type: r.type ?? 'word',
-    imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}` : undefined,
+    // ?thumb=500x500 → ~50 KB statt ~1 MB (PocketBase liefert verkleinerte Version)
+    imageUrl: r.image ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.image}?thumb=500x500` : undefined,
     audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
     audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
     words: parseWordPairs(r.words),
