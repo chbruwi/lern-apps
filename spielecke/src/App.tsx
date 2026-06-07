@@ -686,7 +686,8 @@ export default function App() {
     const saved = getSavedAuth()
     if (saved) {
       setPbUser(saved)
-      const serverCoins = saved.coins ?? 0
+      // max(lokal, server): nie den höheren lokalen Münzstand verlieren (z.B. wenn Sync wegen Offline scheiterte)
+      const serverCoins = Math.max(loadCoins(), saved.coins ?? 0)
       setCoins(serverCoins)
       saveCoins(serverCoins)
     }
@@ -703,7 +704,7 @@ export default function App() {
 
   const handleLogin = (user: PbUser) => {
     setPbUser(user)
-    const serverCoins = user.coins ?? 0
+    const serverCoins = Math.max(loadCoins(), user.coins ?? 0)  // nie den höheren lokalen Münzstand verlieren
     setCoins(serverCoins)
     saveCoins(serverCoins)
   }

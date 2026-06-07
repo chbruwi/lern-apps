@@ -940,7 +940,9 @@ export default function App() {
     if (saved) {
       setPbUser(saved)
       saveXp(saved.xp); setXp(saved.xp)
-      saveCoins(saved.coins); setCoins(saved.coins)
+      // max(lokal, server): nie den höheren lokalen Münzstand verlieren (z.B. wenn Sync wegen Offline scheiterte)
+      const reconciledCoins = Math.max(loadCoins(), saved.coins ?? 0)
+      saveCoins(reconciledCoins); setCoins(reconciledCoins)
       // Einheiten im Hintergrund laden (aus Cache oder PocketBase)
       fetchMathUnits(saved.token, MATH_UNITS_FALLBACK).then(units => {
         setMathUnits(units)
@@ -962,7 +964,8 @@ export default function App() {
   const handleLogin = useCallback((user: PbUser) => {
     setPbUser(user)
     saveXp(user.xp); setXp(user.xp)
-    saveCoins(user.coins); setCoins(user.coins)
+    const reconciledCoins = Math.max(loadCoins(), user.coins ?? 0)  // nie den höheren lokalen Münzstand verlieren
+    saveCoins(reconciledCoins); setCoins(reconciledCoins)
     setSelectedUnit(null) // Immer UnitPicker zeigen nach Login
     // Dynamische Einheiten von PocketBase laden (Stale-While-Revalidate)
     fetchMathUnits(user.token, MATH_UNITS_FALLBACK).then(units => {
