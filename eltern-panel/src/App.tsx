@@ -1530,7 +1530,7 @@ async function generateVocabImage(apiKey: string, en: string, de: string): Promi
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Children's educational flashcard illustration: "${en}" (German: ${de}). Square 1:1 format. Simple, colorful, clear depiction of the concept, cartoon style, no text, white background.` }]
+            parts: [{ text: `Children's educational flashcard illustration of the concept "${en}" (meaning in German: "${de}"). Square 1:1 format, simple, colorful, clear cartoon style, plain white background. CRITICAL: the image must contain ABSOLUTELY NO text — no letters, no words, no numbers, no captions, no labels, no speech bubbles, no signs, no watermarks, no writing of any kind anywhere. Show ONLY a wordless picture of the object or action itself.` }]
           }],
           generationConfig: { responseModalities: ['IMAGE'] }
         })
@@ -2090,7 +2090,7 @@ export default function App() {
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.10.0</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.11.0</div>
     </div>
   )
 }
