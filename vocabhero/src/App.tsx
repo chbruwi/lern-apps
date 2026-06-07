@@ -1188,6 +1188,7 @@ function App() {
   const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [masteredIds, setMasteredIds] = useState<Set<string>>(new Set())
+  const [focusOnly, setFocusOnly] = useState(false)  // Fiona übt freiwillig nur die Fokus-Wörter
   const [loadingVocab, setLoadingVocab] = useState(false)
   const [coins, setCoins] = useState(loadCoins)
   const [totalScore, setTotalScore] = useState(0)
@@ -1337,8 +1338,10 @@ function App() {
   const allVocab = selectedUnit.vocab
   const focusItems = allVocab.filter(v => v.focus)
   const focusOpen = focusItems.filter(v => !(v.id && masteredIds.has(v.id)))
-  const inFocusStage = focusItems.length > 0 && focusOpen.length > 0
-  const practiceVocab = inFocusStage ? focusItems : allVocab
+  const autoFocusStage = focusItems.length > 0 && focusOpen.length > 0  // erzwungen, bis alle sitzen
+  // Fiona kann auch nach dem Freischalten freiwillig nur die Fokus-Wörter üben (focusOnly)
+  const showingFocus = focusItems.length > 0 && (autoFocusStage || focusOnly)
+  const practiceVocab = showingFocus ? focusItems : allVocab
 
   if (view !== 'menu') {
     return (
@@ -1377,11 +1380,24 @@ function App() {
 
       {focusItems.length > 0 && (
         <div style={{ margin: '0 12px 14px', padding: '10px 14px', borderRadius: 12, textAlign: 'center', fontWeight: 600,
-          background: inFocusStage ? 'linear-gradient(135deg,#fde68a,#fbbf24)' : 'linear-gradient(135deg,#bbf7d0,#34d399)',
+          background: showingFocus ? 'linear-gradient(135deg,#fde68a,#fbbf24)' : 'linear-gradient(135deg,#bbf7d0,#34d399)',
           color: '#1f2937' }}>
-          {inFocusStage
+          {autoFocusStage
             ? `⭐ Fokus-Training: noch ${focusOpen.length} von ${focusItems.length} Wörtern, bis alle sitzen`
-            : `✅ Alle Fokus-Wörter sitzen! Jetzt übst du alle ${allVocab.length} Wörter.`}
+            : focusOnly
+              ? `⭐ Du übst gerade nur die ${focusItems.length} Fokus-Wörter`
+              : `✅ Alle Fokus-Wörter sitzen! Jetzt übst du alle ${allVocab.length} Wörter.`}
+        </div>
+      )}
+
+      {/* Nach dem Freischalten: Fiona kann freiwillig zurück zu den Fokus-Wörtern */}
+      {focusItems.length > 0 && !autoFocusStage && (
+        <div style={{ textAlign: 'center', margin: '0 12px 14px' }}>
+          <button onClick={() => setFocusOnly(f => !f)}
+            style={{ padding: '10px 18px', borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff',
+              background: focusOnly ? 'linear-gradient(135deg,#34d399,#10b981)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}>
+            {focusOnly ? '📚 Alle Wörter üben' : '⭐ Nur Fokus-Wörter nochmals üben'}
+          </button>
         </div>
       )}
 
