@@ -1275,11 +1275,8 @@ function App() {
 
   const handleLogout = () => {
     logout()
-    setPbUser(null)
-    setTotalScore(0)
-    setLevel(1)
-    setUnits(UNITS_FALLBACK)
-    setSelectedUnit(null)
+    // Zurück zur vertrauten Landing-Page ("Wer bist du?") statt zum App-internen Login
+    window.location.href = '../'
   }
 
   // handleWordResult: Wort-Tracking fire-and-forget (muss VOR den early returns stehen – Rules of Hooks)
