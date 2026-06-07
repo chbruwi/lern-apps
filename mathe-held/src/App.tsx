@@ -972,7 +972,9 @@ export default function App() {
   }, [])
 
   const handleLogout = useCallback(() => {
-    logout(); setPbUser(null)
+    logout()
+    // Zurück zur vertrauten Landing-Page statt zum App-internen Login
+    window.location.href = '../'
   }, [])
 
   const addXp = useCallback((amount: number) => {

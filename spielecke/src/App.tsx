@@ -710,7 +710,8 @@ export default function App() {
 
   const handleLogout = () => {
     logout()
-    setPbUser(null)
+    // Zurück zur vertrauten Landing-Page statt zum App-internen Login
+    window.location.href = '../'
   }
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />

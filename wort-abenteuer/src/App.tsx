@@ -885,9 +885,8 @@ function App() {
 
   const handleLogout = () => {
     logout()
-    setPbUser(null)
-    setTotalScore(0)
-    setLevel(1)
+    // Zurück zur vertrauten Landing-Page statt zum App-internen Login
+    window.location.href = '../'
   }
 
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
