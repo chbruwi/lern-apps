@@ -6,7 +6,7 @@ import {
   fetchMathUnits, createMathUnit, updateMathUnit, deleteMathUnit,
   fetchVocabUnits, createVocabUnit, updateVocabUnit, deleteVocabUnit,
   fetchVocabItems, createVocabItem, updateVocabItem, deleteVocabItem,
-  createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, updateVocabItemWords, bulkImportVocab, parseBulkText,
+  createVocabItemWithImage, updateVocabItemAudio, updateVocabItemImage, updateVocabItemMedia, updateVocabItemWords, updateVocabItemFocus, bulkImportVocab, parseBulkText,
   saveGeminiKeyToPb, fetchParentGeminiKey,
   fetchWordProgress, WordProgressEntry, WordPair,
 } from './pb'
@@ -769,6 +769,18 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
     } finally { setSavingDecode(false) }
   }
 
+  async function handleToggleFocus(item: VocabItem) {
+    if (!item.id) return
+    const next = !item.focus
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, focus: next } : i))  // optimistisch
+    try {
+      await updateVocabItemFocus(token, item.id, next)
+    } catch {
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, focus: !next } : i))  // zurückrollen
+      alert('Fokus speichern fehlgeschlagen')
+    }
+  }
+
   async function handleGenerateImage(item: VocabItem) {
     if (!geminiKey || !item.id) return
     setImageLoadingIds(prev => new Set(prev).add(item.id!))
@@ -1079,12 +1091,19 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
         <div className="table-wrap word-table-wrap">
           <table className="word-table">
             <thead>
-              <tr><th>Englisch</th><th>Deutsch</th><th>Typ</th><th>🖼️</th><th>🔊</th><th></th></tr>
+              <tr><th title="Fokus für Prüfung">⭐</th><th>Englisch</th><th>Deutsch</th><th>Typ</th><th>🖼️</th><th>🔊</th><th></th></tr>
             </thead>
             <tbody>
               {items.map(item => (
                 <Fragment key={item.id}>
                 <tr>
+                  <td style={{ textAlign: 'center' }}>
+                    <button className="btn-sm" title={item.focus ? 'Fokus aktiv – klicken zum Entfernen' : 'Als Fokus-Wort markieren'}
+                      onClick={() => handleToggleFocus(item)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', filter: item.focus ? 'none' : 'grayscale(1) opacity(0.35)' }}>
+                      ⭐
+                    </button>
+                  </td>
                   <td><input className="field field-inline" value={item.en}
                     onChange={e => handleUpdateItem(item.id, 'en', e.target.value)}
                     onBlur={() => handleSaveItem(item.id)} /></td>
@@ -1144,7 +1163,7 @@ function VocabDetail({ token, unit: initialUnit, geminiKey, onBack, onBulk, onPh
                 </tr>
                 {editDecodeId === item.id && (
                   <tr>
-                    <td colSpan={6} style={{ background: '#f8f8ff', padding: 12 }}>
+                    <td colSpan={7} style={{ background: '#f8f8ff', padding: 12 }}>
                       <div style={{ fontWeight: 600, marginBottom: 6 }}>🧩 De-Kodierung – {item.en}</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {editPairs.map((p, i) => (
@@ -2071,7 +2090,7 @@ export default function App() {
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.9.0</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.10.0</div>
     </div>
   )
 }

@@ -76,7 +76,11 @@ export interface VocabItem {
   audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
   audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
   words?: WordPair[]     // Wort-für-Wort-Dekodierung (nur Phrasen)
+  focus?: boolean        // Fokus-Wort (Prüfung) – zuerst üben
 }
+
+// Wie oft ein Wort richtig sein muss, damit es als "sitzt" gilt
+export const MASTERY_CORRECT = 3
 
 // PocketBase JSON-Felder kommen mal als Array, mal als String (v0.23) — robust parsen
 function parseWordPairs(val: unknown): WordPair[] | undefined {
@@ -144,6 +148,7 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
     audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
     audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
     words: parseWordPairs(r.words),
+    focus: !!r.focus,
   }))
 }
 
@@ -167,6 +172,29 @@ export async function logWordProgress(
       body: JSON.stringify({ user: userId, vocab_item: vocabItemId, game_mode: gameMode, correct }),
     })
   } catch { /* fire-and-forget – Spiel läuft weiter */ }
+}
+
+// Liefert die IDs der Wörter, die das Kind schon "kann" (>= MASTERY_CORRECT richtige Antworten).
+// Aggregiert word_progress über alle Spiele. Bei Fehler: leeres Set (dann gilt nichts als gemeistert).
+export async function fetchMasteredIds(token: string, userId: string): Promise<Set<string>> {
+  try {
+    const res = await fetch(
+      `${PB_URL}/api/collections/word_progress/records?filter=(user='${userId}'%26%26correct=true)&perPage=1000&fields=vocab_item`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    if (!res.ok) throw new Error('progress fetch failed')
+    const data = await res.json()
+    const counts: Record<string, number> = {}
+    for (const r of (data.items ?? [])) {
+      const id = r.vocab_item
+      if (id) counts[id] = (counts[id] ?? 0) + 1
+    }
+    const mastered = new Set<string>()
+    for (const id in counts) if (counts[id] >= MASTERY_CORRECT) mastered.add(id)
+    return mastered
+  } catch {
+    return new Set<string>()
+  }
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
