@@ -835,54 +835,73 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack, onRetry, onWordResult
 
   useEffect(() => {
     if (words.length === 0) { setP('done'); return }
-    const ws = new WebSocket(LIVE_WS_URL)
-    wsRef.current = ws
+    let reconnects = 0
+    const MAX_RECONNECTS = 4
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        setup: {
-          model: 'models/gemini-2.5-flash-native-audio-latest',
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } }
-          },
-          realtimeInputConfig: {
-            automaticActivityDetection: { disabled: true }
-          },
-          systemInstruction: { parts: [{ text: AUSSPRACHE_PROMPT }] }
-        }
-      }))
-    }
+    const connect = () => {
+      const ws = new WebSocket(LIVE_WS_URL)
+      wsRef.current = ws
 
-    ws.onmessage = async (ev) => {
-      try {
-        let text: string
-        if (typeof ev.data === 'string') {
-          text = ev.data
-        } else if (ev.data instanceof Blob) {
-          text = await ev.data.text()
-        } else if (ev.data instanceof ArrayBuffer) {
-          text = new TextDecoder().decode(ev.data)
-        } else { return }
-        const msg = JSON.parse(text)
-        // setupComplete → zeige erstes Wort + Anhören-Button (kein Auto-Start → iOS-fix)
-        if (msg.setupComplete) { setWordIdx(0); wordIdxRef.current = 0; setP('ready'); return }
-        if (msg.serverContent?.modelTurn?.parts) {
-          for (const p of msg.serverContent.modelTurn.parts) {
-            if (p.inlineData?.data) chunksRef.current.push(p.inlineData.data)
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          setup: {
+            model: 'models/gemini-2.5-flash-native-audio-latest',
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } }
+            },
+            realtimeInputConfig: {
+              automaticActivityDetection: { disabled: true }
+            },
+            systemInstruction: { parts: [{ text: AUSSPRACHE_PROMPT }] }
           }
+        }))
+      }
+
+      ws.onmessage = async (ev) => {
+        try {
+          let text: string
+          if (typeof ev.data === 'string') {
+            text = ev.data
+          } else if (ev.data instanceof Blob) {
+            text = await ev.data.text()
+          } else if (ev.data instanceof ArrayBuffer) {
+            text = new TextDecoder().decode(ev.data)
+          } else { return }
+          const msg = JSON.parse(text)
+          // setupComplete → bereit beim AKTUELLEN Wort (auch nach Reconnect); Reconnect-Budget zurücksetzen
+          if (msg.setupComplete) { reconnects = 0; setWordIdx(wordIdxRef.current); setP('ready'); return }
+          if (msg.serverContent?.modelTurn?.parts) {
+            for (const p of msg.serverContent.modelTurn.parts) {
+              if (p.inlineData?.data) chunksRef.current.push(p.inlineData.data)
+            }
+          }
+          if (msg.serverContent?.turnComplete) {
+            const chunks = [...chunksRef.current]; chunksRef.current = []
+            await playChunks(chunks)
+          }
+        } catch { /* ignoriere Parse-Fehler */ }
+      }
+
+      ws.onerror = (e) => { console.error('[live] WS error', e) /* onclose übernimmt Reconnect/Fehler */ }
+      ws.onclose = (e) => {
+        if (closingRef.current || phaseRef.current === 'done') return
+        console.warn('[live] WS closed', e.code, e.reason)
+        // Gemini schliesst Sitzungen bei Leerlauf/Timeout (Code 1001 u.a.) → still neu verbinden
+        if (reconnects < MAX_RECONNECTS) {
+          reconnects++
+          chunksRef.current = []
+          stopRecRef.current?.()
+          setP('connecting')
+          setTimeout(() => { if (!closingRef.current) connect() }, 600)
+        } else {
+          setP('error'); setErrMsg('Verbindung mehrfach unterbrochen. Bitte „Nochmal" tippen.')
         }
-        if (msg.serverContent?.turnComplete) {
-          const chunks = [...chunksRef.current]; chunksRef.current = []
-          await playChunks(chunks)
-        }
-      } catch { /* ignoriere Parse-Fehler */ }
+      }
     }
 
-    ws.onerror = (e) => { console.error('[live] WS error', e); setP('error'); setErrMsg('Verbindungsfehler. Bitte erneut versuchen.') }
-    ws.onclose = (e) => { console.warn('[live] WS closed', e.code, e.reason); if (!closingRef.current && phaseRef.current !== 'done') { setP('error'); setErrMsg(`Verbindung getrennt (Code ${e.code}${e.reason ? ': ' + e.reason : ''}).`) } }
-
-    return () => { closingRef.current = true; ws.close(); stopRecRef.current?.(); audioCtxRef.current?.close() }
+    connect()
+    return () => { closingRef.current = true; wsRef.current?.close(); stopRecRef.current?.(); audioCtxRef.current?.close() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Anhören"-Button: AudioContext beim User-Gesture entsperren, dann Wort anfragen
