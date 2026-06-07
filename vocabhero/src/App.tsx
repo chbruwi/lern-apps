@@ -122,16 +122,29 @@ function Confetti({ active }: { active: boolean }) {
 // SPEAKER BUTTON
 // ============================================================
 
+// Nur EIN Ton gleichzeitig: ein neuer Klick stoppt den laufenden (kein Überlagern bei Mehrfachklick)
+let currentAudio: HTMLAudioElement | null = null
+let currentOnStop: (() => void) | null = null
+function playOnce(url: string, onStop?: () => void): void {
+  if (currentAudio) {
+    try { currentAudio.pause(); currentAudio.currentTime = 0 } catch { /* ignore */ }
+    const prev = currentOnStop; currentAudio = null; currentOnStop = null; prev?.()  // vorherigen Button zurücksetzen
+  }
+  const a = new Audio(url)
+  currentAudio = a; currentOnStop = onStop ?? null
+  const done = () => { if (currentAudio === a) { currentAudio = null; currentOnStop = null } onStop?.() }
+  a.onended = done
+  a.onerror = done
+  a.play().catch(done)
+}
+
 function SpeakerButton({ url, label }: { url?: string; label?: string }) {
   const [playing, setPlaying] = useState(false)
   if (!url) return null
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation()  // verhindert Karteikarten-Flip beim Klick
-    const a = new Audio(url)
     setPlaying(true)
-    a.onended = () => setPlaying(false)
-    a.onerror = () => setPlaying(false)
-    a.play().catch(() => setPlaying(false))
+    playOnce(url!, () => setPlaying(false))
   }
   return (
     <button
@@ -1155,7 +1168,7 @@ function DeKodieren({ vocab, onScore, onBack }: { vocab: VocabItem[]; lang: stri
   const [awarded, setAwarded] = useState<Set<number>>(new Set())
 
   function playAndAward(item: VocabItem, idx: number) {
-    if (item.audioLangUrl) { const a = new Audio(item.audioLangUrl); a.play().catch(() => {}) }
+    if (item.audioLangUrl) playOnce(item.audioLangUrl)
     if (!awarded.has(idx)) { setAwarded(prev => new Set(prev).add(idx)); onScore(1) }
   }
 
