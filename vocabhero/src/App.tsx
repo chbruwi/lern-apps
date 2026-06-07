@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import './App.css'
 import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, fetchMasteredIds, PbUser, VocabItem, VocabUnit, WordPair } from './pb'
 
@@ -1318,6 +1318,18 @@ function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
+  // Fokus-Stufenlogik + practiceVocab – MEMOISIERT, damit die Array-Referenz stabil bleibt.
+  // (Sonst bekäme jedes Spiel bei jedem Render eine neue vocab-Referenz → ständige Re-Initialisierung.)
+  const { allVocab, focusItems, focusOpen, autoFocusStage, showingFocus, practiceVocab } = useMemo(() => {
+    const allVocab = selectedUnit?.vocab ?? []
+    const focusItems = allVocab.filter(v => v.focus)
+    const focusOpen = focusItems.filter(v => !(v.id && masteredIds.has(v.id)))
+    const autoFocusStage = focusItems.length > 0 && focusOpen.length > 0
+    const showingFocus = focusItems.length > 0 && (autoFocusStage || focusOnly)
+    const practiceVocab = showingFocus ? focusItems : allVocab
+    return { allVocab, focusItems, focusOpen, autoFocusStage, showingFocus, practiceVocab }
+  }, [selectedUnit?.vocab, masteredIds, focusOnly])
+
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
   if (loadingVocab) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -1361,16 +1373,7 @@ function App() {
     else setView('menu')
   }
 
-  // ── Fokus-Stufenlogik ──────────────────────────────────────────────
-  // Stufe 1: Es gibt Fokus-Wörter, die noch nicht sitzen → nur Fokus-Wörter üben.
-  // Stufe 2: Alle Fokus-Wörter sitzen (oder keine markiert) → alle Wörter.
-  const allVocab = selectedUnit.vocab
-  const focusItems = allVocab.filter(v => v.focus)
-  const focusOpen = focusItems.filter(v => !(v.id && masteredIds.has(v.id)))
-  const autoFocusStage = focusItems.length > 0 && focusOpen.length > 0  // erzwungen, bis alle sitzen
-  // Fiona kann auch nach dem Freischalten freiwillig nur die Fokus-Wörter üben (focusOnly)
-  const showingFocus = focusItems.length > 0 && (autoFocusStage || focusOnly)
-  const practiceVocab = showingFocus ? focusItems : allVocab
+  // Fokus-Stufenlogik (allVocab/focusItems/practiceVocab …) ist oben memoisiert.
 
   if (view !== 'menu') {
     return (
