@@ -1409,14 +1409,10 @@ const LANG_ACCENTS: Record<string, string> = {
 
 async function generateVocabAudio(apiKey: string, word: string, lang = 'en'): Promise<Blob | null> {
   const accent = LANG_ACCENTS[lang] ?? LANG_ACCENTS['en']
-  const prompt = `# AUDIO PROFILE: Friendly Language Teacher
-### DIRECTOR'S NOTES
-Style: Warm, clear and encouraging – like a patient primary school teacher
-Pacing: Slow and deliberate, each word pronounced clearly once
-Accent: ${accent}
-
-### TRANSCRIPT
-${word}`
+  // Schlanke, einzeilige Anweisung: das Modell spricht nur den Text NACH dem Doppelpunkt.
+  // (Das frühere mehrteilige "DIRECTOR'S NOTES"-Format führte bei einzelnen kurzen Wörtern
+  //  dazu, dass Teile der Anweisung mitgesprochen wurden.)
+  const prompt = `Say slowly and clearly, in a warm friendly primary-school-teacher voice with a ${accent}, exactly the following and nothing else: ${word}`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30_000) // 30s Timeout
   try {
@@ -2090,7 +2086,7 @@ export default function App() {
           />
         )}
       </main>
-      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.11.0</div>
+      <div style={{ textAlign: 'right', padding: '4px 16px', fontSize: '0.7rem', color: '#aaa' }}>v1.11.1</div>
     </div>
   )
 }
