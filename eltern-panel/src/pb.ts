@@ -62,6 +62,7 @@ export interface VocabItem {
   audioLangUrl?: string  // Aussprache en-Feld (EN/FR/ES/IT)
   audioDeUrl?: string    // Aussprache de-Feld (immer Deutsch)
   words?: WordPair[]     // Wort-für-Wort-Dekodierung (nur Phrasen)
+  focus?: boolean        // Fokus-Wort (Prüfungsvorbereitung) – zuerst abfragen
 }
 
 // PocketBase JSON-Felder kommen mal als Array, mal als String (v0.23) — robust parsen
@@ -337,7 +338,18 @@ export async function fetchVocabItems(token: string, unitId: string): Promise<Vo
     audioLangUrl: r.audio_lang ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_lang}` : undefined,
     audioDeUrl: r.audio_de ? `${PB_URL}/api/files/vocab_items/${r.id}/${r.audio_de}` : undefined,
     words: parseWordPairs(r.words),
+    focus: !!r.focus,
   }))
+}
+
+// Fokus-Markierung eines Wortes/Satzes setzen
+export async function updateVocabItemFocus(token: string, id: string, focus: boolean): Promise<void> {
+  const res = await fetch(`${PB_URL}/api/collections/vocab_items/records/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ focus }),
+  })
+  if (!res.ok) throw new Error('Fokus speichern fehlgeschlagen')
 }
 
 // De-Kodierung (Wort-für-Wort) eines Satzes speichern

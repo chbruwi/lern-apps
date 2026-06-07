@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
-import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, PbUser, VocabItem, VocabUnit, WordPair } from './pb'
+import { getSavedAuth, loginWithCode, syncToServer, logout, fetchVocabUnits, fetchVocabItems, logActivity, logWordProgress, fetchMasteredIds, PbUser, VocabItem, VocabUnit, WordPair } from './pb'
 
 // Shared coin storage (same key as Mathe-Held & Spielecke)
 const SK_COINS = 'lernheld-v1-coins'
@@ -1187,6 +1187,7 @@ function App() {
   const [memoryKey, setMemoryKey] = useState(0)
   const [units, setUnits] = useState<Unit[]>(UNITS_FALLBACK)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
+  const [masteredIds, setMasteredIds] = useState<Set<string>>(new Set())
   const [loadingVocab, setLoadingVocab] = useState(false)
   const [coins, setCoins] = useState(loadCoins)
   const [totalScore, setTotalScore] = useState(0)
@@ -1286,6 +1287,13 @@ function App() {
     logWordProgress(pbUser.token, pbUser.id, itemId, view, correct)
   }, [pbUser, view])
 
+  // Lernstand (welche Wörter "sitzen") laden – beim Öffnen einer Unit und bei jeder Rückkehr ins Menü
+  useEffect(() => {
+    if (pbUser && selectedUnit && view === 'menu') {
+      fetchMasteredIds(pbUser.token, pbUser.id).then(setMasteredIds).catch(() => {})
+    }
+  }, [pbUser?.id, selectedUnit?.id, view])
+
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
   if (loadingVocab) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -1323,6 +1331,15 @@ function App() {
 
   const goMenu = () => setView('menu')
 
+  // ── Fokus-Stufenlogik ──────────────────────────────────────────────
+  // Stufe 1: Es gibt Fokus-Wörter, die noch nicht sitzen → nur Fokus-Wörter üben.
+  // Stufe 2: Alle Fokus-Wörter sitzen (oder keine markiert) → alle Wörter.
+  const allVocab = selectedUnit.vocab
+  const focusItems = allVocab.filter(v => v.focus)
+  const focusOpen = focusItems.filter(v => !(v.id && masteredIds.has(v.id)))
+  const inFocusStage = focusItems.length > 0 && focusOpen.length > 0
+  const practiceVocab = inFocusStage ? focusItems : allVocab
+
   if (view !== 'menu') {
     return (
       <div className="app">
@@ -1331,13 +1348,13 @@ function App() {
           <span className="top-score">🪙 {coins}</span>
           <span className="top-level">Lvl {level}</span>
         </div>
-        {view === 'flip'         && <FlipCards vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
-        {view === 'match'        && <MatchIt vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
-        {view === 'memory'       && <Memory key={memoryKey} vocab={selectedUnit.vocab} onScore={addCoins} onBack={goMenu} onRestart={() => setMemoryKey(k => k + 1)} />}
-        {view === 'dekodieren'   && <DeKodieren vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
-        {view === 'speed'        && <SpeedQuiz vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
-        {view === 'scramble'     && <BuchstabenSalat vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
-        {view === 'pronunciation'&& <AusspracheTrainer key={pronunciationKey} vocab={selectedUnit.vocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onRetry={() => setPronunciationKey(k => k + 1)} onWordResult={handleWordResult} />}
+        {view === 'flip'         && <FlipCards vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'match'        && <MatchIt vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'memory'       && <Memory key={memoryKey} vocab={practiceVocab} onScore={addCoins} onBack={goMenu} onRestart={() => setMemoryKey(k => k + 1)} />}
+        {view === 'dekodieren'   && <DeKodieren vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} />}
+        {view === 'speed'        && <SpeedQuiz vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'scramble'     && <BuchstabenSalat vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onWordResult={handleWordResult} />}
+        {view === 'pronunciation'&& <AusspracheTrainer key={pronunciationKey} vocab={practiceVocab} lang={selectedUnit.language} onScore={addCoins} onBack={goMenu} onRetry={() => setPronunciationKey(k => k + 1)} onWordResult={handleWordResult} />}
       </div>
     )
   }
@@ -1358,8 +1375,18 @@ function App() {
         </div>
       </header>
 
+      {focusItems.length > 0 && (
+        <div style={{ margin: '0 12px 14px', padding: '10px 14px', borderRadius: 12, textAlign: 'center', fontWeight: 600,
+          background: inFocusStage ? 'linear-gradient(135deg,#fde68a,#fbbf24)' : 'linear-gradient(135deg,#bbf7d0,#34d399)',
+          color: '#1f2937' }}>
+          {inFocusStage
+            ? `⭐ Fokus-Training: noch ${focusOpen.length} von ${focusItems.length} Wörtern, bis alle sitzen`
+            : `✅ Alle Fokus-Wörter sitzen! Jetzt übst du alle ${allVocab.length} Wörter.`}
+        </div>
+      )}
+
       <div className="menu-grid">
-        {GAMES.filter(g => !g.available || g.available(selectedUnit.vocab)).map((g, i) => (
+        {GAMES.filter(g => !g.available || g.available(practiceVocab)).map((g, i) => (
           <button
             key={g.id}
             className="menu-card"

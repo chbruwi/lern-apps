@@ -155,7 +155,8 @@ first aid = erste Hilfe
 ```
 Parser: Split bei `=`, `[phrase]`-Suffix erkannt → Preview → sequenziell importiert.
 
-- **🔤 De-Kodierung generieren** (Button in der Unit-Detailansicht, neben Bilder/Audio): erzeugt für alle Phrase-Items ohne `words` die Wort-für-Wort-Tabelle per Gemini (`gemini-2.5-flash`, `generateDecoding()` → `[{s,de}]`) und speichert sie via `updateVocabItemWords()`. Versorgt den VocabHero **De-Kodieren**-Modus. Zeigt „(X fehlen)" / „alle ✅".
+- **🔤 De-Kodierung generieren** (Button in der Unit-Detailansicht, neben Bilder/Audio): erzeugt für alle Phrase-Items ohne `words` die Wort-für-Wort-Tabelle per Gemini (`gemini-2.5-flash`, `generateDecoding()` → `[{s,de}]`) und speichert sie via `updateVocabItemWords()`. Versorgt den VocabHero **De-Kodieren**-Modus. Zeigt „(X fehlen)" / „alle ✅". Pro Satz editierbar über den 🧩-Button (Inline-Editor der Wort-Paare).
+- **⭐ Fokus-Stern** (erste Spalte der Wörter-Tabelle): markiert Wörter/Sätze als Prüfungs-Fokus (`vocab_items.focus`, `updateVocabItemFocus()`). VocabHero übt markierte zuerst (Fokus-Stufenlogik).
 - **📸 Foto-Wizard:** Foto der Vokabelliste → OCR → Bilder + Audio generieren → in PocketBase speichern
   - 3-Schritt-Wizard: Foto | Prüfen | Generieren
   - OCR: `gemini-2.0-flash` Vision API → JSON-Array `[{en, de, type}]`
@@ -243,6 +244,12 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-pr
   - 🔤 **Buchstaben-Salat** — Buchstaben sortieren; bei EN-Units: zufällige Richtung (EN oder DE scramble); bei FR/ES/IT-Units: immer DE als Hinweis, Hauptwort scramble (Artikel werden vor dem Scramble abgezogen: la/le/les/l'/…)
   - 🧩 **De-Kodieren** — Sätze Wort-für-Wort (Birkenbihl). Nutzt Phrase-Items mit `words`-Dekodierung + generiertes Audio. Erscheint **nur** wenn die Unit dekodierte Phrasen hat. Wort-Tabelle aus `VocabItem.words` (`[{s,de}]`), 🔊 spielt `audioLangUrl`, +1🪙 beim ersten Vorlesen pro Satz.
   - Memory/De-Kodieren sind datengetrieben sichtbar (`GAMES[].available(vocab)` filtert das Menü).
+- **⭐ Fokus-Stufenlogik** (Prüfungsvorbereitung):
+  - Eltern markieren im Eltern-Panel Wörter/Sätze mit ⭐ (`vocab_items.focus`).
+  - **Stufe 1:** Gibt es Fokus-Wörter, die noch nicht „sitzen" → **alle Spiele bekommen nur die Fokus-Wörter** (`practiceVocab = focusItems`).
+  - **Stufe 2:** Alle Fokus-Wörter sitzen (oder keine markiert) → alle Wörter.
+  - „Sitzt" = `>= MASTERY_CORRECT` (3) richtige Antworten in `word_progress` (über alle Spiele), berechnet via `fetchMasteredIds()`.
+  - **Zentrale Umsetzung:** `practiceVocab` wird einmal berechnet und an *alle* Modi gegeben — kein Spiel kennt die Logik selbst. Banner oben zeigt den Stand. Mastery wird bei jeder Rückkehr ins Menü neu geladen.
 - Lazy Vocab-Load: Wörter werden erst beim Unit-Start geladen (`fetchVocabItems()`)
 - Beide Richtungen: EN→DE und DE→EN zufällig gemischt
 - Stale-While-Revalidate: Units gecacht in localStorage (`lernheld-vocab-units-v1`)
@@ -437,6 +444,7 @@ services:
 | audio_lang | file (max 1) | Aussprache `en`-Feld (EN/FR/ES/IT) als WAV |
 | audio_de | file (max 1) | Aussprache `de`-Feld (Deutsch) als WAV |
 | words | json | Wort-für-Wort-Dekodierung (nur Phrasen): `[{"s":"<Quell-Häppchen>","de":"<wörtlich DE>"}]`. Erzeugt per Gemini im Eltern-Panel (Button „🔤 De-Kodierung"). Genutzt vom VocabHero De-Kodieren-Modus. |
+| focus | bool | Fokus-Wort für Prüfungsvorbereitung. ⭐-Stern im Eltern-Panel. VocabHero übt Fokus-Wörter zuerst (siehe Fokus-Stufenlogik). |
 
 **API-Regeln:** identisch wie `math_units`
 
