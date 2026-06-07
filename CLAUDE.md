@@ -450,6 +450,8 @@ services:
 
 **File-URL Schema:** `${PB_URL}/api/files/vocab_items/${record.id}/${record.image}`
 
+**Thumbnails:** Das `image`-Feld hat `thumbs: ["500x500"]`. Clients laden Bilder mit `?thumb=500x500` (~50 KB statt ~1 MB) — deutlich schneller auf dem Handy. VocabHero hängt das in `fetchVocabItems` automatisch an die `imageUrl`.
+
 ---
 
 ### `activity_log` (Base Collection) — Lernprotokoll

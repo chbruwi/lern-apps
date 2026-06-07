@@ -820,7 +820,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack, onRetry, onWordResult
       const arrayBuffer = await wav.arrayBuffer()
       let ctx = audioCtxRef.current
       if (!ctx || ctx.state === 'closed') {
-        ctx = new AudioContext({ sampleRate: 24000 })
+        ctx = new AudioContext()  // KEINE erzwungene sampleRate – iOS wirft sonst NotSupportedError → kein Ton
         audioCtxRef.current = ctx
       }
       await ctx.resume()
@@ -892,7 +892,7 @@ function AusspracheTrainer({ vocab, lang, onScore, onBack, onRetry, onWordResult
     // AudioContext beim Tap entsperren (iOS braucht User-Gesture)
     try {
       if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-        audioCtxRef.current = new AudioContext({ sampleRate: 24000 })
+        audioCtxRef.current = new AudioContext()  // Default-Rate (iOS-kompatibel)
       }
       await audioCtxRef.current.resume()
       // 1 Sample Stille spielen → iOS AudioContext dauerhaft entsperren
@@ -1292,6 +1292,13 @@ function App() {
     }
   }, [pbUser?.id, selectedUnit?.id, view])
 
+  // Browser-Zurück-Pfeil im Spiel → zurück ins Menü statt App verlassen
+  useEffect(() => {
+    const onPop = () => setView('menu')
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   if (!pbUser) return <LoginScreen onLogin={handleLogin} />
   if (loadingVocab) return (
     <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -1327,7 +1334,13 @@ function App() {
     }
   }
 
-  const goMenu = () => setView('menu')
+  // Browser-Zurück-Pfeil soll ins Menü führen statt die App zu verlassen:
+  // Beim Öffnen eines Spiels einen History-Eintrag setzen; goMenu konsumiert ihn wieder.
+  const openGame = (v: View) => { window.history.pushState({ vhGame: true }, ''); setView(v) }
+  const goMenu = () => {
+    if (window.history.state?.vhGame) window.history.back()  // löst popstate → Menü
+    else setView('menu')
+  }
 
   // ── Fokus-Stufenlogik ──────────────────────────────────────────────
   // Stufe 1: Es gibt Fokus-Wörter, die noch nicht sitzen → nur Fokus-Wörter üben.
@@ -1404,7 +1417,7 @@ function App() {
             key={g.id}
             className="menu-card"
             style={{ '--g': g.gradient, animationDelay: `${i * 0.08}s` } as React.CSSProperties}
-            onClick={() => setView(g.id)}
+            onClick={() => openGame(g.id)}
           >
             <div className="card-bg" style={{ background: g.gradient }} />
             <span className="card-emoji">{g.emoji}</span>
