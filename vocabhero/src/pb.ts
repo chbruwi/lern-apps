@@ -175,11 +175,13 @@ export async function logWordProgress(
 }
 
 // Liefert die IDs der Wörter, die das Kind schon "kann" (>= MASTERY_CORRECT richtige Antworten).
-// Aggregiert word_progress über alle Spiele. Bei Fehler: leeres Set (dann gilt nichts als gemeistert).
+// Aggregiert word_progress über die OBJEKTIV bewerteten Spiele.
+// Karteikarten ('flip') zählen NICHT mit – dort schätzt das Kind selbst ein (Gewusst/Nochmal).
+// Bei Fehler: leeres Set (dann gilt nichts als gemeistert).
 export async function fetchMasteredIds(token: string, userId: string): Promise<Set<string>> {
   try {
     const res = await fetch(
-      `${PB_URL}/api/collections/word_progress/records?filter=(user='${userId}'%26%26correct=true)&perPage=1000&fields=vocab_item`,
+      `${PB_URL}/api/collections/word_progress/records?filter=(user='${userId}'%26%26correct=true%26%26game_mode!='flip')&perPage=1000&fields=vocab_item`,
       { headers: { 'Authorization': `Bearer ${token}` } }
     )
     if (!res.ok) throw new Error('progress fetch failed')
